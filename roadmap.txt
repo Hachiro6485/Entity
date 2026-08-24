@@ -1,0 +1,587 @@
+I actually think abandoning a full rewrite is the right move.
+
+From what I saw, your current project already has the hard part done:
+
+* Voice input
+* Voice output
+* LLM integration
+* Tool execution
+* Desktop control
+* Memory
+* GUI
+
+Most people spend months getting to that point.
+
+The fastest path to a genuinely impressive Entity is to **evolve the current architecture**, not replace it.
+
+---
+
+# The North Star
+
+Before the roadmap, I think it's important to define what we're building.
+
+Current Entity:
+
+```text
+User
+ ↓
+LLM
+ ↓
+Action
+ ↓
+Tool
+```
+
+Target Entity:
+
+```text
+User
+ ↓
+Planner
+ ↓
+Task List
+ ↓
+Reasoner
+ ↓
+Tool Execution
+ ↓
+Verification
+ ↓
+Correction
+ ↓
+Completion
+```
+
+That single change unlocks everything else.
+
+---
+
+# ENTITY DEVELOPMENT ROADMAP
+
+Ordered by impact.
+
+---
+
+# PHASE 1 — Multi-Step Planning System
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+Massive
+
+Difficulty:
+Medium
+
+---
+
+Current:
+
+```text
+User:
+"Create a folder and put all PDFs into it"
+
+LLM:
+open_folder()
+```
+
+Fails immediately.
+
+---
+
+Desired:
+
+```text
+Goal:
+Create a folder and move PDFs
+
+Plan:
+1. Create folder
+2. Search for PDFs
+3. Move PDFs
+4. Verify files moved
+5. Report completion
+```
+
+---
+
+New files:
+
+```text
+core/
+│
+├── planner.py
+├── executor.py
+└── verifier.py
+```
+
+---
+
+Planner output:
+
+```python
+[
+    {
+        "tool": "create_folder",
+        "args": {
+            "name": "PDFs"
+        }
+    },
+
+    {
+        "tool": "find_files",
+        "args": {
+            "extension": ".pdf"
+        }
+    },
+
+    {
+        "tool": "move_files"
+    }
+]
+```
+
+---
+
+Goal:
+
+Entity can solve tasks instead of execute commands.
+
+---
+
+# PHASE 2 — Tool Registry
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+Huge
+
+Difficulty:
+Easy
+
+---
+
+Current:
+
+```python
+if action == "open_app":
+```
+
+Every tool requires modifying router.
+
+---
+
+Replace with:
+
+```python
+TOOLS = {
+    "open_app": open_app,
+    "search_web": search_web,
+    "lock_pc": lock_pc
+}
+```
+
+---
+
+Then planner simply says:
+
+```json
+{
+    "tool": "open_app"
+}
+```
+
+---
+
+Benefits:
+
+* Infinite scalability
+* Cleaner code
+* Easier debugging
+
+---
+
+# PHASE 3 — Self Verification
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+Huge
+
+Difficulty:
+Medium
+
+---
+
+Current:
+
+```text
+Open Chrome
+```
+
+Entity:
+
+```text
+Done.
+```
+
+Even if Chrome never opened.
+
+---
+
+Desired:
+
+```text
+Open Chrome
+```
+
+Entity:
+
+```text
+1. Launch Chrome
+2. Check running processes
+3. Verify Chrome exists
+4. Report success
+```
+
+---
+
+Verification loop:
+
+```python
+while not verified:
+    retry()
+```
+
+---
+
+This alone makes Entity feel intelligent.
+
+---
+
+# PHASE 4 — Structured Memory
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+Very High
+
+Difficulty:
+Medium
+
+---
+
+Current memory:
+
+```json
+[
+  "hello",
+  "open chrome"
+]
+```
+
+---
+
+Desired:
+
+```json
+{
+  "preferences": {},
+  "projects": {},
+  "facts": {},
+  "conversations": {}
+}
+```
+
+---
+
+Example:
+
+```json
+{
+  "project_name": "Entity",
+  "current_phase": "Planner System",
+  "last_completed_task": "Tool Registry"
+}
+```
+
+---
+
+Then:
+
+```text
+Continue working on Entity.
+```
+
+Entity knows where it left off.
+
+---
+
+# PHASE 5 — Vision
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+Extremely High
+
+Difficulty:
+Medium-Hard
+
+---
+
+This is where Entity becomes JARVIS.
+
+---
+
+Capabilities:
+
+```python
+capture_screen()
+
+read_text()
+
+detect_buttons()
+
+describe_window()
+```
+
+---
+
+Example:
+
+```text
+User:
+What is on my screen?
+```
+
+Entity:
+
+```text
+Chrome is open.
+You have 4 tabs.
+Gmail is visible.
+```
+
+---
+
+No hardcoded automation.
+
+---
+
+# PHASE 6 — Computer Use Agent
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+Extremely High
+
+Difficulty:
+Hard
+
+---
+
+Uses:
+
+* Vision
+* Planner
+* Tool Registry
+
+Together.
+
+---
+
+Example:
+
+```text
+Open YouTube
+Search Quantum Physics
+Play first video
+```
+
+Entity figures out steps itself.
+
+---
+
+Instead of:
+
+```python
+open_youtube()
+```
+
+---
+
+This is the biggest leap in capability.
+
+---
+
+# PHASE 7 — Project System
+
+Priority:
+⭐⭐⭐⭐⭐⭐⭐
+
+Impact:
+High
+
+Difficulty:
+Easy
+
+---
+
+Allow Entity to track long tasks.
+
+Example:
+
+```text
+Project:
+Build Entity
+```
+
+Stores:
+
+```json
+{
+  "milestones": [],
+  "completed": [],
+  "next_steps": []
+}
+```
+
+---
+
+Then:
+
+```text
+What are we working on?
+```
+
+Entity responds intelligently.
+
+---
+
+# PHASE 8 — Background Agent
+
+Priority:
+⭐⭐⭐⭐⭐⭐
+
+Impact:
+High
+
+Difficulty:
+Hard
+
+---
+
+Entity can run continuously.
+
+Example:
+
+```text
+Monitor my Downloads folder.
+```
+
+or
+
+```text
+Tell me when GPU usage exceeds 80%.
+```
+
+---
+
+Runs without user prompting.
+
+---
+
+# PHASE 9 — Multi-Agent System
+
+Priority:
+⭐⭐⭐⭐⭐
+
+Impact:
+Medium
+
+Difficulty:
+Hard
+
+---
+
+Only after everything above.
+
+---
+
+Example:
+
+```text
+Planner Agent
+Research Agent
+Coding Agent
+Verification Agent
+```
+
+---
+
+This is cool but not nearly as important as people think.
+
+Most projects build this too early.
+
+---
+
+# PHASE 10 — Local Knowledge Base
+
+Priority:
+⭐⭐⭐⭐⭐
+
+Impact:
+Medium
+
+Difficulty:
+Medium
+
+---
+
+Entity can index:
+
+* PDFs
+* Notes
+* Source code
+* Documents
+
+and answer questions from them.
+
+---
+
+# What We Should Do First
+
+I would not touch vision.
+
+I would not touch memory.
+
+I would not touch agents.
+
+The single highest-return upgrade is:
+
+### 1. Planner
+
+### 2. Executor
+
+### 3. Verification Loop
+
+Those three components transform Entity from:
+
+```text
+Command Executor
+```
+
+into
+
+```text
+Task Solver
+```
+
+Everything else becomes easier afterward.
+
+So the next thing I would do is design the **planner architecture around your existing `brain.py` and `router.py`**, rather than creating new disconnected files. That way we can upgrade the current codebase without breaking what already works.

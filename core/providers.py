@@ -1,0 +1,81 @@
+"""
+core/providers.py
+
+Single source of truth for LLM provider configuration.
+
+Previously, the same four API keys (Groq, SambaNova, Cerebras, OpenRouter)
+plus a Gemini key were hardcoded, in plaintext, in THREE different files
+(brain.py, planner.py, verifier.py) and a fourth copy of the Groq key lived
+in experimental/agent_brain.py. That meant:
+  - the keys were committed to source and shipped in every zip/export
+  - rotating a key meant hunting through multiple files
+  - brain.py, planner.py and verifier.py each kept their OWN cooldown
+    registry, so a rate-limited provider in one module wasn't skipped by
+    the others
+
+This module fixes all three problems: one place to configure providers,
+keys loaded from environment variables (never committed), and a single
+shared cooldown registry imported everywhere.
+
+SETUP:
+  1. Copy .env.example to .env
+  2. Fill in your real API keys in .env
+  3. Never commit .env (it's already in .gitignore)
+
+If a key is missing, that provider is silently skipped rather than
+crashing the app — this keeps failover working even if you've only
+set up one or two providers.
+"""
+
+import os
+import time
+
+try:
+    # Optional dependency — if python-dotenv isn't installed we just fall
+    # back to whatever is already in the real environment variables.
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+
+def _provider(name, base_url, env_var, default_model, model_env_var=None):
+    key = os.environ.get(env_var, "").strip()
+    if not key:
+        return None
+    model = os.environ.get(model_env_var, "").strip() if model_env_var else ""
+    return {"name": name, "base_url": base_url, "api_key": key, "model": model or default_model}
+
+
+# Default model per provider. These get renamed/deprecated by providers
+# periodically (e.g. Groq retired llama-3.3-70b-versatile in favor of
+# openai/gpt-oss-120b) — if you start seeing 404 "model_not_found" errors,
+# check the provider's current model list and override via the matching
+# _MODEL env var below rather than editing this file.
+_ALL_PROVIDERS = [
+    _provider("Groq Cloud", "https://api.groq.com/openai/v1", "GROQ_API_KEY", "openai/gpt-oss-120b", "GROQ_MODEL"),
+    _provider("SambaNova AI", "https://api.sambanova.ai/v1", "SAMBANOVA_API_KEY", "Meta-Llama-3.3-70B-Instruct", "SAMBANOVA_MODEL"),
+    _provider("Cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", "llama-3.3-70b", "CEREBRAS_MODEL"),
+    _provider("OpenRouter Free", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "meta-llama/llama-3.3-70b-instruct:free", "OPENROUTER_MODEL"),
+]
+
+# Only providers that actually have a key configured are usable.
+PROVIDERS = [p for p in _ALL_PROVIDERS if p is not None]
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+
+# Shared across brain.py / planner.py / verifier.py so a provider that gets
+# rate-limited by one module is correctly skipped by the others too.
+COOLDOWN_REGISTRY: dict = {}
+COOLDOWN_DURATION_SECONDS = 60
+
+
+def require_providers():
+    """Call this at startup so a misconfigured .env fails loudly and early,
+    instead of failing silently deep inside brain.think()."""
+    if not PROVIDERS:
+        raise RuntimeError(
+            "No LLM providers configured. Copy .env.example to .env and set "
+            "at least one of GROQ_API_KEY, SAMBANOVA_API_KEY, CEREBRAS_API_KEY, "
+            "or OPENROUTER_API_KEY."
+        )

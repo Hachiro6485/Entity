@@ -1,0 +1,23 @@
+# The Entity — dependencies
+#
+# This project is Windows-only (winsound, pyautogui window focus, Start
+# Menu shortcut scanning, os.environ["ProgramData"]/["AppData"]).
+# Install with:  pip install -r requirements.txt
+
+python-dotenv>=1.0.0      # loads .env for API keys (core/providers.py)
+openai>=1.30.0            # OpenAI-compatible client used for Groq/SambaNova/Cerebras/OpenRouter
+google-genai>=0.3.0       # Gemini client, used for the vision/analyze_screen tool
+Pillow>=10.0.0             # PIL, screenshot handling for vision
+numpy>=1.26.0
+sounddevice>=0.4.6
+SpeechRecognition>=3.10.0
+pyautogui>=0.9.54
+pyttsx3>=2.90              # CLI (main.py) text-to-speech
+edge-tts>=6.1.0            # GUI (app.py) text-to-speech
+pygame>=2.5.0              # GUI audio playback for edge-tts output
+customtkinter>=5.2.0       # GUI framework for app.py
+
+# Note: PyAudio is also required by SpeechRecognition's Microphone class on
+# most systems but isn't pip-installable cleanly everywhere — on Windows,
+# `pip install pyaudio` usually works directly; if it fails, install the
+# matching wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio

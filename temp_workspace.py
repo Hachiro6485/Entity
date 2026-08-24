@@ -1,0 +1,1 @@
+import os; os.system("xbacklight -set 100")

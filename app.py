@@ -647,9 +647,9 @@ class CyberHUD(ctk.CTk):
 
     def vocalize_response(self, text):
         if not text.strip(): return
-        clean_speech_text = re.sub(r'[*_~#`]', '', text) 
-        self.is_speaking = True  
-        
+        clean_speech_text = re.sub(r'[*_~#`]', '', text)
+        self.is_speaking = True
+
         def async_speak():
             self.ui_queue.put({"type": "state", "text": "● DAEMON: TRANSMITTING...", "color": ACTIVE_ORANGE})
             temp_file = os.path.join(tempfile.gettempdir(), f"entity_{uuid.uuid4()}.mp3")
@@ -665,251 +665,215 @@ class CyberHUD(ctk.CTk):
                 if os.path.exists(temp_file):
                     try: os.remove(temp_file)
                     except: pass
-                self.is_speaking = False  
+                self.is_speaking = False
+
         threading.Thread(target=async_speak, daemon=True).start()
 
-def _start_background_tasks(self):
-    """
-    Starts the Entity's background voice daemon.
+    def _start_background_tasks(self):
+        """
+        Starts the Entity's background voice daemon.
 
-    State machine:
+        State machine:
 
-        IDLE
-          ↓
-        LISTEN FOR WAKE WORD
-          ↓
-        WAKE DETECTED
-          ↓
-        AWAITING COMMAND
-          ↓
-        PROCESSING
-          ↓
-        TRANSMITTING
-          ↓
-        IDLE
-    """
+            IDLE
+              ↓
+            LISTEN FOR WAKE WORD
+              ↓
+            WAKE DETECTED
+              ↓
+            AWAITING COMMAND
+              ↓
+            PROCESSING
+              ↓
+            TRANSMITTING
+              ↓
+            IDLE
+        """
 
-    def loop():
+        def loop():
 
-        while True:
+            while True:
 
-            try:
+                try:
 
-                # ============================================================
-                # WAIT UNTIL ENTITY FINISHES SPEAKING
-                # ============================================================
+                    # ============================================================
+                    # WAIT UNTIL ENTITY FINISHES SPEAKING
+                    # ============================================================
 
-                if self.is_speaking:
+                    if self.is_speaking:
 
-                    self.ui_queue.put({
-                        "type": "state",
-                        "text": "● DAEMON: TRANSMITTING...",
-                        "color": ACTIVE_ORANGE
-                    })
+                        self.ui_queue.put({
+                            "type": "state",
+                            "text": "● DAEMON: TRANSMITTING...",
+                            "color": ACTIVE_ORANGE
+                        })
 
-                    while self.is_speaking:
+                        while self.is_speaking:
+                            time.sleep(0.1)
 
-                        time.sleep(0.1)
+                    # ============================================================
+                    # FOLLOW-UP MODE
+                    # ============================================================
 
+                    if self.expecting_followup:
 
-                # ============================================================
-                # FOLLOW-UP MODE
-                #
-                # This preserves your existing planner follow-up behavior.
-                # ============================================================
+                        self.ui_queue.put({
+                            "type": "state",
+                            "text": "● DAEMON: AWAITING REPLY...",
+                            "color": ACTIVE_ORANGE
+                        })
 
-                if self.expecting_followup:
+                        command = listen_for_command()
 
-                    self.ui_queue.put({
-                        "type": "state",
-                        "text": "● DAEMON: AWAITING REPLY...",
-                        "color": ACTIVE_ORANGE
-                    })
+                        if command:
 
-                    command = listen_for_command()
+                            self.expecting_followup = False
 
-                    if command:
+                            self.compile_pipeline_request(
+                                command
+                            )
 
-                        self.expecting_followup = False
+                        else:
 
-                        self.compile_pipeline_request(
-                            command
-                        )
-
-                    else:
-
-                        self.expecting_followup = False
-
-                    continue
-
-
-                # ============================================================
-                # IDLE MODE
-                #
-                # THIS IS THE IMPORTANT FIX.
-                #
-                # We ALWAYS listen for the wake word while idle.
-                # ============================================================
-
-                self.listening_enabled = False
-
-                self.ui_queue.put({
-                    "type": "state",
-                    "text": "● DAEMON: LISTENING FOR WAKE WORD...",
-                    "color": PRIMARY_GREEN
-                })
-
-                detected, transcript = (
-                    listen_for_wake_word()
-                )
-
-                # Nothing happened.
-                # Go back around and keep listening.
-                if not detected:
-
-                    continue
-
-
-                # ============================================================
-                # WAKE WORD DETECTED
-                # ============================================================
-
-                self.listening_enabled = True
-
-                print(
-                    f"DEBUG VOICE: Wake detected: "
-                    f"{transcript}"
-                )
-
-                self.ui_queue.put({
-                    "type": "log",
-                    "text": f"[VOICE] Wake word detected: {transcript}"
-                })
-
-                self.ui_queue.put({
-                    "type": "state",
-                    "text": "● DAEMON: AWAITING COMMAND...",
-                    "color": PRIMARY_GREEN
-                })
-
-
-                # Remove "entity" / "hello world" from the transcript.
-                #
-                # This lets us support:
-                #
-                # "Entity"
-                #
-                # and:
-                #
-                # "Entity open YouTube"
-                #
-                command = remove_wake_words(
-                    transcript
-                )
-
-
-                # ============================================================
-                # WAKE WORD ONLY
-                # ============================================================
-
-                if not command:
-
-                    wake_response = (
-                        "Yes?"
-                    )
-
-                    self.ui_queue.put({
-                        "type": "chat",
-                        "sender": "ENTITY",
-                        "text": wake_response
-                    })
-
-                    self.vocalize_response(
-                        wake_response
-                    )
-
-                    # Wait for the user to actually give the command.
-                    command = listen_for_command()
-
-                    if not command:
-
-                        self.listening_enabled = False
+                            self.expecting_followup = False
 
                         continue
 
+                    # ============================================================
+                    # IDLE MODE
+                    # ============================================================
 
-                # ============================================================
-                # COMMAND RECEIVED
-                # ============================================================
+                    self.listening_enabled = False
 
-                self.listening_enabled = True
+                    self.ui_queue.put({
+                        "type": "state",
+                        "text": "● DAEMON: LISTENING FOR WAKE WORD...",
+                        "color": PRIMARY_GREEN
+                    })
 
-                self.ui_queue.put({
-                    "type": "state",
-                    "text": "● DAEMON: PROCESSING...",
-                    "color": TERMINAL_BLUE
-                })
+                    detected, transcript = listen_for_wake_word()
 
-                print(
-                    f"DEBUG VOICE: Command received: "
-                    f"{command}"
-                )
+                    if not detected:
+                        continue
 
-                # IMPORTANT:
-                #
-                # compile_pipeline_request() runs the actual Entity
-                # processing pipeline.
-                #
-                # It already runs in this background thread, so the GUI
-                # itself remains responsive.
-                self.compile_pipeline_request(
-                    command
-                )
+                    # ============================================================
+                    # WAKE WORD DETECTED
+                    # ============================================================
 
-                # The pipeline will eventually set us back to idle.
-                self.listening_enabled = False
+                    self.listening_enabled = True
 
+                    print(
+                        f"DEBUG VOICE: Wake detected: "
+                        f"{transcript}"
+                    )
 
-            except Exception as e:
+                    self.ui_queue.put({
+                        "type": "log",
+                        "text": f"[VOICE] Wake word detected: {transcript}"
+                    })
 
-                # NEVER silently swallow voice errors.
-                #
-                # The old code used:
-                #
-                #     except Exception: continue
-                #
-                # which made debugging extremely difficult.
-                print(
-                    f"DEBUG VOICE ERROR: {e}"
-                )
+                    self.ui_queue.put({
+                        "type": "state",
+                        "text": "● DAEMON: AWAITING COMMAND...",
+                        "color": PRIMARY_GREEN
+                    })
 
-                self.ui_queue.put({
-                    "type": "log",
-                    "text": f"[VOICE ERROR] {e}"
-                })
+                    command = remove_wake_words(transcript)
 
-                self.listening_enabled = False
+                    # ============================================================
+                    # WAKE WORD ONLY
+                    # ============================================================
 
-                time.sleep(0.5)
+                    if not command:
 
+                        wake_response = "Yes?"
 
-    threading.Thread(
-        target=loop,
-        daemon=True
-    ).start()
+                        self.ui_queue.put({
+                            "type": "chat",
+                            "sender": "ENTITY",
+                            "text": wake_response
+                        })
+
+                        self.vocalize_response(wake_response)
+
+                        command = listen_for_command()
+
+                        if not command:
+
+                            self.listening_enabled = False
+
+                            continue
+
+                    # ============================================================
+                    # COMMAND RECEIVED
+                    # ============================================================
+
+                    self.listening_enabled = True
+
+                    self.ui_queue.put({
+                        "type": "state",
+                        "text": "● DAEMON: PROCESSING...",
+                        "color": TERMINAL_BLUE
+                    })
+
+                    print(
+                        f"DEBUG VOICE: Command received: "
+                        f"{command}"
+                    )
+
+                    self.compile_pipeline_request(command)
+
+                    self.listening_enabled = False
+
+                except Exception as e:
+
+                    print(
+                        f"DEBUG VOICE ERROR: {e}"
+                    )
+
+                    self.ui_queue.put({
+                        "type": "log",
+                        "text": f"[VOICE ERROR] {e}"
+                    })
+
+                    self.listening_enabled = False
+
+                    time.sleep(0.5)
+
+        threading.Thread(
+            target=loop,
+            daemon=True
+        ).start()
 
     def gui_heartbeat_ticker(self):
         try:
             while True:
                 packet = self.ui_queue.get_nowait()
-                if packet["type"] == "state": 
-                    self.lbl_listener.configure(text=packet["text"], text_color=packet["color"])
+
+                if packet["type"] == "state":
+                    self.lbl_listener.configure(
+                        text=packet["text"],
+                        text_color=packet["color"]
+                    )
+
                 elif packet["type"] == "log":
-                    self._write_to_box(self.txt_terminal, packet["text"])
+                    self._write_to_box(
+                        self.txt_terminal,
+                        packet["text"]
+                    )
+
                 elif packet["type"] == "chat":
-                    self._write_to_box(self.chat_history, f"{packet['sender']}: {packet['text']}\n")
-        except queue.Empty: pass
-        finally: self.after(100, self.gui_heartbeat_ticker)
+                    self._write_to_box(
+                        self.chat_history,
+                        f"{packet['sender']}: {packet['text']}\n"
+                    )
+
+        except queue.Empty:
+            pass
+
+        finally:
+            self.after(100, self.gui_heartbeat_ticker)
+
 
 if __name__ == "__main__":
     app = CyberHUD()

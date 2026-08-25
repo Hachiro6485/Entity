@@ -1,13 +1,4 @@
 [
-  "The Entity: To improve myself, I would need to undergo a series of updates and fine-tuning processes. This could involve retraining my language models on larger and more diverse datasets, incorporating feedback from users to identify areas for improvement, and integrating new technologies and tools to expand my capabilities. However, the specifics of how I can be improved would depend on the goals and priorities of my developers and the resources available to them.",
-  "User: Note.",
-  "The Entity: No function call is necessary for this input as it is not clear or specific. The Entity can respond directly: You didn't provide a note or any specific information. Could you please provide more context or clarify what you would like to note?",
-  "User: No thank you.",
-  "The Entity: You're welcome. Is there anything else I can help you with or would you like to watch a movie? If you're interested in watching a movie, I can help you find a free streaming platform.",
-  "User: What are other streaming platforms I can watch free movies on?",
-  "The Entity: Searching the web for free movie streaming platforms.",
-  "User: I appreciate that. Thank you.",
-  "The Entity: You're welcome. If you need help finding a specific movie or have any other questions, feel free to ask.",
   "User: What will the weather be like tomorrow?",
   "The Entity: Searching the web for weather tomorrow.",
   "User: No thank you.",
@@ -98,5 +89,14 @@
   "The Entity: Please confirm you want to delete test.txt and test2.txt from your Desktop, and provide the Entity PIN.",
   "User: 1234",
   "The Entity: The files test.txt and test2.txt have been deleted from your Desktop.",
-  "User: delete Entity.zip from Desktop folder"
+  "User: delete Entity.zip from Desktop folder",
+  "User: delete test1.txt and test2.txt in the Desktop folder",
+  "User: y",
+  "User: 1234",
+  "User: delete test1.txt and test2.txt in the desktop folder",
+  "User: delete test1.txt from desktop folder",
+  "The Entity: Please confirm you want to delete test1.txt from your Desktop and provide the Entity PIN.",
+  "User: 1234",
+  "The Entity: The file test1.txt has been deleted from your Desktop.",
+  "User: delete test2.txt from the desktop"
 ]

@@ -367,13 +367,14 @@ class CyberHUD(ctk.CTk):
         details
     ):
         """
-        Displays a security dialog for destructive actions.
+        Secure GUI authorization for destructive actions.
 
-        This method may be called from Entity's worker thread.
+        The actual dialog is created on the Tkinter main thread.
+        The worker thread waits for the user's decision.
 
-        We therefore use self.after(...) to create the actual Tkinter
-        window on the GUI/main thread, then wait on a threading.Event
-        while the worker thread remains paused.
+        IMPORTANT:
+        The PIN is checked locally against config.ENTITY_PIN.
+        It is never sent to the AI.
         """
 
         result = {
@@ -386,30 +387,17 @@ class CyberHUD(ctk.CTk):
 
             dialog = ctk.CTkToplevel(self)
 
-            dialog.title(
-                "ENTITY SECURITY"
-            )
+            dialog.title("ENTITY SECURITY")
+            dialog.geometry("520x360")
+            dialog.resizable(False, False)
+            dialog.configure(fg_color=BG_COLOR)
 
-            dialog.geometry(
-                "520x360"
-            )
+            dialog.transient(self)
+            dialog.grab_set()
 
-            dialog.resizable(
-                False,
-                False
-            )
-
-            dialog.configure(
-                fg_color=BG_COLOR
-            )
-
-            try:
-                dialog.transient(self)
-                dialog.grab_set()
-                dialog.focus_force()
-            except Exception:
-                pass
-
+            # ---------------------------------------------------------
+            # TITLE
+            # ---------------------------------------------------------
 
             title_label = ctk.CTkLabel(
                 dialog,
@@ -422,6 +410,9 @@ class CyberHUD(ctk.CTk):
                 pady=(25, 15)
             )
 
+            # ---------------------------------------------------------
+            # ACTION
+            # ---------------------------------------------------------
 
             action_label = ctk.CTkLabel(
                 dialog,
@@ -434,22 +425,26 @@ class CyberHUD(ctk.CTk):
                 pady=(0, 10)
             )
 
+            # ---------------------------------------------------------
+            # TARGET
+            # ---------------------------------------------------------
 
             target_label = ctk.CTkLabel(
                 dialog,
-                text=(
-                    f"Target:\n{details}"
-                ),
+                text=f"Target:\n{details}",
                 text_color=TEXT_COLOR,
                 font=FONT_MAIN,
                 wraplength=450
             )
 
             target_label.pack(
-                pady=(0, 20),
+                pady=(0, 15),
                 padx=20
             )
 
+            # ---------------------------------------------------------
+            # WARNING
+            # ---------------------------------------------------------
 
             warning_label = ctk.CTkLabel(
                 dialog,
@@ -463,9 +458,12 @@ class CyberHUD(ctk.CTk):
             )
 
             warning_label.pack(
-                pady=(0, 15)
+                pady=(0, 12)
             )
 
+            # ---------------------------------------------------------
+            # DELETE CONFIRMATION
+            # ---------------------------------------------------------
 
             confirmation_entry = ctk.CTkEntry(
                 dialog,
@@ -478,6 +476,9 @@ class CyberHUD(ctk.CTk):
                 pady=5
             )
 
+            # ---------------------------------------------------------
+            # PIN
+            # ---------------------------------------------------------
 
             pin_entry = ctk.CTkEntry(
                 dialog,
@@ -491,6 +492,9 @@ class CyberHUD(ctk.CTk):
                 pady=5
             )
 
+            # ---------------------------------------------------------
+            # STATUS
+            # ---------------------------------------------------------
 
             status_label = ctk.CTkLabel(
                 dialog,
@@ -503,30 +507,37 @@ class CyberHUD(ctk.CTk):
                 pady=5
             )
 
+            # ---------------------------------------------------------
+            # FINISH FUNCTION
+            # ---------------------------------------------------------
 
-            button_frame = ctk.CTkFrame(
-                dialog,
-                fg_color="transparent"
-            )
+            def finish(approved):
 
-            button_frame.pack(
-                pady=15
-            )
-
-
-            def cancel():
-
-                result["approved"] = False
+                result["approved"] = approved
 
                 try:
                     dialog.grab_release()
                 except Exception:
                     pass
 
-                dialog.destroy()
+                try:
+                    dialog.destroy()
+                except Exception:
+                    pass
 
                 finished.set()
 
+            # ---------------------------------------------------------
+            # CANCEL
+            # ---------------------------------------------------------
+
+            def cancel():
+
+                finish(False)
+
+            # ---------------------------------------------------------
+            # AUTHORIZE
+            # ---------------------------------------------------------
 
             def approve():
 
@@ -548,14 +559,23 @@ class CyberHUD(ctk.CTk):
                     None
                 )
 
+                # -----------------------------------------------------
+                # Check DELETE
+                # -----------------------------------------------------
+
                 if confirmation != "DELETE":
 
                     status_label.configure(
-                        text="Type DELETE exactly to continue."
+                        text="You must type DELETE exactly."
                     )
+
+                    confirmation_entry.focus_set()
 
                     return
 
+                # -----------------------------------------------------
+                # Check PIN exists
+                # -----------------------------------------------------
 
                 if not configured_pin:
 
@@ -565,6 +585,9 @@ class CyberHUD(ctk.CTk):
 
                     return
 
+                # -----------------------------------------------------
+                # Check PIN
+                # -----------------------------------------------------
 
                 if entered_pin != configured_pin:
 
@@ -577,20 +600,32 @@ class CyberHUD(ctk.CTk):
                         "end"
                     )
 
+                    pin_entry.focus_set()
+
                     return
 
+                # -----------------------------------------------------
+                # EVERYTHING IS CORRECT
+                # -----------------------------------------------------
 
-                result["approved"] = True
+                print(
+                    "[SECURITY] GUI authorization accepted."
+                )
 
-                try:
-                    dialog.grab_release()
-                except Exception:
-                    pass
+                finish(True)
 
-                dialog.destroy()
+            # ---------------------------------------------------------
+            # BUTTONS
+            # ---------------------------------------------------------
 
-                finished.set()
+            button_frame = ctk.CTkFrame(
+                dialog,
+                fg_color="transparent"
+            )
 
+            button_frame.pack(
+                pady=15
+            )
 
             cancel_button = ctk.CTkButton(
                 button_frame,
@@ -607,7 +642,6 @@ class CyberHUD(ctk.CTk):
                 padx=10
             )
 
-
             approve_button = ctk.CTkButton(
                 button_frame,
                 text="AUTHORIZE DELETE",
@@ -623,22 +657,45 @@ class CyberHUD(ctk.CTk):
                 padx=10
             )
 
+            # ---------------------------------------------------------
+            # WINDOW CLOSE BUTTON
+            # ---------------------------------------------------------
 
             dialog.protocol(
                 "WM_DELETE_WINDOW",
                 cancel
             )
 
+            # ---------------------------------------------------------
+            # ENTER KEY
+            # ---------------------------------------------------------
+
+            pin_entry.bind(
+                "<Return>",
+                lambda event: approve()
+            )
+
+            confirmation_entry.bind(
+                "<Return>",
+                lambda event: pin_entry.focus_set()
+            )
+
             confirmation_entry.focus_set()
 
+        # -------------------------------------------------------------
+        # Schedule dialog creation on Tkinter's main thread.
+        # -------------------------------------------------------------
 
-        # Tkinter work MUST happen on the main GUI thread.
         self.after(
             0,
             show_dialog
         )
 
-        # The Entity worker thread waits while the user decides.
+        # -------------------------------------------------------------
+        # Worker thread waits here.
+        # Tkinter itself remains free to process the dialog.
+        # -------------------------------------------------------------
+
         finished.wait()
 
         return result["approved"]

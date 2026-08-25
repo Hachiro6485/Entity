@@ -86,6 +86,7 @@ DANGEROUS_DUNDERS = {
     "__subclasses__", "__bases__", "__mro__", "__globals__", "__builtins__",
     "__base__", "__code__", "__closure__", "__getattribute__",
     "__reduce__", "__reduce_ex__", "__class__",
+
 }
 
 

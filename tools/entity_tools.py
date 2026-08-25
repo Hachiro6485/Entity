@@ -1,12 +1,11 @@
 from tools.tool_registry import entity_tool
-
 from tools.system_control import (
     open_app,
     type_text,
     media_control
 )
-
 from tools.web_tools import search, open_website
+from tools.basic_tools import delete_file
 
 import os
 import shutil
@@ -67,6 +66,23 @@ def tool_open_website(args):
 # =============================================================================
 # FILE SYSTEM TOOLS
 # =============================================================================
+
+@entity_tool(
+    name="delete_file",
+    description=(
+        "Permanently deletes one specific file. "
+        "This action requires explicit human confirmation and the Entity PIN."
+    ),
+    category="filesystem"
+)
+def tool_delete_file(args):
+
+    path = args.get(
+        "path",
+        ""
+    )
+
+    return delete_file(path)
 
 @entity_tool(
     name="create_folder",

@@ -7,7 +7,10 @@ import coder
 import json
 from core import brain
 from tools import system_control, web_tools
-from tools.basic_tools import open_app
+from tools.basic_tools import (
+    open_app,
+    delete_file
+    )
 
 def find_and_open_app(app_name):
     """
@@ -43,6 +46,9 @@ def route(intent):
 
     elif action == "media":
         return system_control.media_control(value)
+
+    elif action == "delete_file":
+        return delete_file(value)
 
     elif action == "search_web" or action == "search":
         return web_tools.search(value)

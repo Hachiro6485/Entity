@@ -5,6 +5,8 @@ import re
 import os
 import shutil
 
+from security.access_control import authorize_destructive_action
+
 
 # =============================================================================
 # APP RESOLUTION
@@ -314,3 +316,171 @@ def type_text(text):
     )
 
     return "Text entered."
+
+# =============================================================================
+# PROTECTED FILE DELETION
+# =============================================================================
+
+def delete_file(file_path):
+    """
+    Deletes exactly one file after explicit human authorization.
+
+    Security requirements:
+
+        1. The path must point to a real file.
+        2. The user must type DELETE.
+        3. The user must provide the Entity PIN.
+        4. The PIN is never passed to the AI.
+    """
+
+    if file_path is None:
+        return "No file path was specified."
+
+    path = os.path.expandvars(
+        os.path.expanduser(
+            str(file_path).strip()
+        )
+    )
+
+    if not path:
+        return "No file path was specified."
+
+    path = os.path.abspath(path)
+
+    # ------------------------------------------------------------
+    # Make sure the target actually exists.
+    # ------------------------------------------------------------
+
+    if not os.path.exists(path):
+
+        return (
+            f"I couldn't delete the file because it does not exist: "
+            f"{path}"
+        )
+
+    # ------------------------------------------------------------
+    # Only files are allowed in Stage 5.
+    #
+    # This intentionally does NOT delete directories yet.
+    # ------------------------------------------------------------
+
+    if not os.path.isfile(path):
+
+        return (
+            f"I refused to delete '{path}' because it is not a file."
+        )
+
+    # ------------------------------------------------------------
+    # Never allow deletion of a drive root.
+    # ------------------------------------------------------------
+
+    drive, tail = os.path.splitdrive(path)
+
+    if not tail or tail in ("\\", "/"):
+
+        return (
+            "I refused to delete a drive root."
+        )
+
+    # ------------------------------------------------------------
+    # Protect the Windows system directory and Program Files.
+    #
+    # We don't want an accidental natural-language request to
+    # permanently damage the operating system.
+    # ------------------------------------------------------------
+
+    protected_roots = []
+
+    windows_dir = os.environ.get("WINDIR")
+
+    if windows_dir:
+        protected_roots.append(
+            os.path.abspath(windows_dir)
+        )
+
+    program_files = os.environ.get(
+        "ProgramFiles"
+    )
+
+    if program_files:
+        protected_roots.append(
+            os.path.abspath(program_files)
+        )
+
+    program_files_x86 = os.environ.get(
+        "ProgramFiles(x86)"
+    )
+
+    if program_files_x86:
+        protected_roots.append(
+            os.path.abspath(program_files_x86)
+        )
+
+    normalized_path = os.path.normcase(
+        os.path.realpath(path)
+    )
+
+    for protected_root in protected_roots:
+
+        normalized_root = os.path.normcase(
+            os.path.realpath(protected_root)
+        )
+
+        try:
+
+            if (
+                os.path.commonpath(
+                    [
+                        normalized_path,
+                        normalized_root
+                    ]
+                )
+                == normalized_root
+            ):
+
+                return (
+                    "I refused to delete a protected "
+                    "Windows or Program Files location."
+                )
+
+        except ValueError:
+            pass
+
+    # ------------------------------------------------------------
+    # Authorization gate
+    # ------------------------------------------------------------
+
+    authorized = authorize_destructive_action(
+        "DELETE FILE",
+        path
+    )
+
+    if not authorized:
+
+        return (
+            "Deletion cancelled. "
+            "The security authorization was not accepted."
+        )
+
+    # ------------------------------------------------------------
+    # Authorized deletion
+    # ------------------------------------------------------------
+
+    try:
+
+        os.remove(path)
+
+        print(
+            f"DEBUG SECURITY: Deleted file: {path}"
+        )
+
+        return (
+            f"File permanently deleted: {path}"
+        )
+
+    except Exception as e:
+
+        return (
+            f"I was authorized to delete '{path}', "
+            f"but the deletion failed: {e}"
+        )

@@ -170,6 +170,13 @@ FILE SYSTEM TOOLS:
     — source_paths accepts either a single path string OR a JSON list of paths.
     — Example: {"source_paths": "$step_2.output", "destination": "C:/Users/%USERNAME%/Desktop/PDFs"}
 
+  delete_file(path: str)
+    — Permanently deletes exactly one specific file.
+    — Requires explicit human confirmation and the Entity PIN.
+    — Never use run_python for file deletion.
+    — Only use when the user explicitly requests deletion.
+    — Example: {"path": "C:/Users/%USERNAME%/Desktop/test.txt"}
+
   list_files(directory: str)
     — Lists all files in a given directory.
     — Returns a JSON list of file names.

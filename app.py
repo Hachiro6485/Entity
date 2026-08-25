@@ -15,6 +15,8 @@ import re
 import math
 import random
 import json
+import config
+from security.access_control import set_gui_authorizer
 
 # Align static paths
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -107,6 +109,9 @@ class CyberHUD(ctk.CTk):
             })
         
         self._build_interface()
+        set_gui_authorizer(
+            self._authorize_destructive_action
+        )
         self.show_view("dashboard") 
         self.refresh_clock()
         self.after(500, self._start_background_tasks)
@@ -355,6 +360,288 @@ class CyberHUD(ctk.CTk):
         if result.blocked:
             return f"Code Error: {result.as_message()}"
         return result.output
+
+    def _authorize_destructive_action(
+        self,
+        action_name,
+        details
+    ):
+        """
+        Displays a security dialog for destructive actions.
+
+        This method may be called from Entity's worker thread.
+
+        We therefore use self.after(...) to create the actual Tkinter
+        window on the GUI/main thread, then wait on a threading.Event
+        while the worker thread remains paused.
+        """
+
+        result = {
+            "approved": False
+        }
+
+        finished = threading.Event()
+
+        def show_dialog():
+
+            dialog = ctk.CTkToplevel(self)
+
+            dialog.title(
+                "ENTITY SECURITY"
+            )
+
+            dialog.geometry(
+                "520x360"
+            )
+
+            dialog.resizable(
+                False,
+                False
+            )
+
+            dialog.configure(
+                fg_color=BG_COLOR
+            )
+
+            try:
+                dialog.transient(self)
+                dialog.grab_set()
+                dialog.focus_force()
+            except Exception:
+                pass
+
+
+            title_label = ctk.CTkLabel(
+                dialog,
+                text="⚠  SECURITY AUTHORIZATION REQUIRED",
+                text_color=ACTIVE_ORANGE,
+                font=FONT_TITLE
+            )
+
+            title_label.pack(
+                pady=(25, 15)
+            )
+
+
+            action_label = ctk.CTkLabel(
+                dialog,
+                text=f"Action: {action_name}",
+                text_color=TEXT_COLOR,
+                font=FONT_BOLD
+            )
+
+            action_label.pack(
+                pady=(0, 10)
+            )
+
+
+            target_label = ctk.CTkLabel(
+                dialog,
+                text=(
+                    f"Target:\n{details}"
+                ),
+                text_color=TEXT_COLOR,
+                font=FONT_MAIN,
+                wraplength=450
+            )
+
+            target_label.pack(
+                pady=(0, 20),
+                padx=20
+            )
+
+
+            warning_label = ctk.CTkLabel(
+                dialog,
+                text=(
+                    "This action may permanently change or destroy data.\n"
+                    "Type DELETE and enter your Entity PIN to continue."
+                ),
+                text_color=TERMINAL_BLUE,
+                font=FONT_MAIN,
+                wraplength=450
+            )
+
+            warning_label.pack(
+                pady=(0, 15)
+            )
+
+
+            confirmation_entry = ctk.CTkEntry(
+                dialog,
+                placeholder_text="Type DELETE",
+                width=360,
+                height=40
+            )
+
+            confirmation_entry.pack(
+                pady=5
+            )
+
+
+            pin_entry = ctk.CTkEntry(
+                dialog,
+                placeholder_text="Entity PIN",
+                width=360,
+                height=40,
+                show="*"
+            )
+
+            pin_entry.pack(
+                pady=5
+            )
+
+
+            status_label = ctk.CTkLabel(
+                dialog,
+                text="",
+                text_color=ACTIVE_ORANGE,
+                font=FONT_MAIN
+            )
+
+            status_label.pack(
+                pady=5
+            )
+
+
+            button_frame = ctk.CTkFrame(
+                dialog,
+                fg_color="transparent"
+            )
+
+            button_frame.pack(
+                pady=15
+            )
+
+
+            def cancel():
+
+                result["approved"] = False
+
+                try:
+                    dialog.grab_release()
+                except Exception:
+                    pass
+
+                dialog.destroy()
+
+                finished.set()
+
+
+            def approve():
+
+                confirmation = (
+                    confirmation_entry
+                    .get()
+                    .strip()
+                )
+
+                entered_pin = (
+                    pin_entry
+                    .get()
+                    .strip()
+                )
+
+                configured_pin = getattr(
+                    config,
+                    "ENTITY_PIN",
+                    None
+                )
+
+                if confirmation != "DELETE":
+
+                    status_label.configure(
+                        text="Type DELETE exactly to continue."
+                    )
+
+                    return
+
+
+                if not configured_pin:
+
+                    status_label.configure(
+                        text="ENTITY_PIN is not configured."
+                    )
+
+                    return
+
+
+                if entered_pin != configured_pin:
+
+                    status_label.configure(
+                        text="Incorrect Entity PIN."
+                    )
+
+                    pin_entry.delete(
+                        0,
+                        "end"
+                    )
+
+                    return
+
+
+                result["approved"] = True
+
+                try:
+                    dialog.grab_release()
+                except Exception:
+                    pass
+
+                dialog.destroy()
+
+                finished.set()
+
+
+            cancel_button = ctk.CTkButton(
+                button_frame,
+                text="CANCEL",
+                fg_color="#333333",
+                hover_color="#444444",
+                width=140,
+                height=40,
+                command=cancel
+            )
+
+            cancel_button.pack(
+                side="left",
+                padx=10
+            )
+
+
+            approve_button = ctk.CTkButton(
+                button_frame,
+                text="AUTHORIZE DELETE",
+                fg_color=ACTIVE_ORANGE,
+                hover_color="#ff7733",
+                width=180,
+                height=40,
+                command=approve
+            )
+
+            approve_button.pack(
+                side="left",
+                padx=10
+            )
+
+
+            dialog.protocol(
+                "WM_DELETE_WINDOW",
+                cancel
+            )
+
+            confirmation_entry.focus_set()
+
+
+        # Tkinter work MUST happen on the main GUI thread.
+        self.after(
+            0,
+            show_dialog
+        )
+
+        # The Entity worker thread waits while the user decides.
+        finished.wait()
+
+        return result["approved"]
 
     def check_termination_gate(self, command):
         if "system down" in command.lower() or "shut down" in command.lower():

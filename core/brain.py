@@ -39,6 +39,9 @@ Analyze Marcus's requests carefully:
 - If he asks to control system volume or media playback, use 'media_control'.
 - If he asks to perform a task for which there is no dedicated tool, use 'run_python'.
 - NEVER use 'run_python' when a dedicated tool already exists for the requested action.
+- If he explicitly asks to permanently delete a specific file, use 'delete_file'.
+- NEVER use 'run_python' with os.remove, os.unlink, shutil.rmtree, or similar deletion code.
+- The dedicated 'delete_file' tool handles the security confirmation and Entity PIN.
 
 When writing scripts that require fetching data from the web (like weather or search), you must use the built-in urllib and json libraries. Do NOT use the requests library, as it may not be available in the execution environment.
 
@@ -246,6 +249,29 @@ ENTITY_TOOLS = [
         }
     },
     {
+        "type": "function",
+        "function": {
+            "name": "delete_file",
+            "description": (
+                "Permanently deletes one specific file. "
+                "Only use this when the user explicitly requests deletion. "
+                "The tool itself will require human confirmation and the Entity PIN."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "The exact path of the file to permanently delete."
+                        )
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
         "type": "function", 
         "function": {
             "name": "run_python", 
@@ -332,6 +358,7 @@ def think(user_input, memory_context=""):
                         "open_website": "open_website",
                         "type_text": "type_text",
                         "media_control": "media_control",
+                        "delete_file": "delete_file",
                         "run_python": "run_python"
                     }
 
@@ -420,7 +447,7 @@ Return exactly one JSON object.
 The JSON must have exactly these two fields:
 
 {
-    "action": "chat|open_app|open_website|search_web|type_text|media_control|vision|run_python",
+    "action": "chat|open_app|open_website|search_web|type_text|media_control|delete_file|vision|run_python",
     "value": "..."
 }
 
@@ -432,6 +459,7 @@ vision
 type_text
 open_website
 media_control
+delete_file
 run_python
 
 Never return a bare word.
@@ -448,7 +476,9 @@ Use type_text when the user explicitly asks you to type text into the active win
 
 Use media_control when the user wants to control volume or media playback.
 
-Only use run_python when no dedicated tool exists for the requested task.
+Use delete_file only when the user explicitly wants to permanently delete a specific file.
+
+Only use run_python when no dedicated tool exists for the requested task. Never use run_python to delete files.
 
 
 Examples:

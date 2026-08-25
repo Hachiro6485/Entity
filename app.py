@@ -31,7 +31,9 @@ from memory.memory import get_context, add_memory
 from perception.speech_to_text import (
     listen_for_wake_word,
     listen_for_command,
-    remove_wake_words
+    remove_wake_words,
+    set_muted,
+    is_muted
 )
 
 print_registry()
@@ -50,6 +52,8 @@ FONT_FAMILY = "Segoe UI" if os.name == "nt" else "Helvetica Neue"
 FONT_MAIN = (FONT_FAMILY, 13)
 FONT_BOLD = (FONT_FAMILY, 14, "bold")
 FONT_TITLE = (FONT_FAMILY, 16, "bold")
+
+MUTED_GREY = "#555555"
 
 class CyberHUD(ctk.CTk):
     def __init__(self):
@@ -77,45 +81,29 @@ class CyberHUD(ctk.CTk):
         self.ui_queue = queue.Queue()
         self.voice_model = "en-GB-SoniaNeural"
         
-        # --- NATIVE 3D JARVIS VISUALIZER CONFIGURATION ---
+        # --- INTERACTIVE 2D PARTICLE NETWORK CONFIGURATION ---
+        # Replaced the static 3D orbital cloud with a drifting network that
+        # actually reacts to you: particles wander slowly, link to nearby
+        # particles, and link to the cursor when it's in range — the "call
+        # mute button" style effect, applied to the visualizer.
         self.current_scale = 1.0
         self.target_scale = 1.0
         self.speech_tick = 0
-        
-        # Initialize 3D particle cloud points (X, Y, Z coordinates + point configurations)
-        self.particles = []
-        num_particles = 500
-        for i in range(num_particles):
-            # Assign particles across 4 distinct orbital rings with varying inclinations
-            ring_id = i % 4
-            angle = random.uniform(0, math.pi * 2)
-            radius = 120 + random.uniform(-10, 10) + (ring_id * 25)
-            
-            # Mathematical inclination vectors to achieve multi-directional 3D orbits
-            if ring_id == 0:
-                tilt_x, tilt_y = 0.5, 0.8
-                speed = 0.03
-                color = "#ff7700"
-            elif ring_id == 1:
-                tilt_x, tilt_y = -0.6, 0.4
-                speed = -0.02
-                color = "#ffaa00"
-            elif ring_id == 2:
-                tilt_x, tilt_y = 0.8, -0.3
-                speed = 0.04
-                color = "#ffd452"
-            else:
-                tilt_x, tilt_y = -0.2, -0.7
-                speed = -0.025
-                color = "#cc5500"
 
+        self.mouse_x = None
+        self.mouse_y = None
+
+        # Kept deliberately small (O(n^2) pairwise distance checks run every
+        # frame for the particle-to-particle links) — 90 is plenty dense for
+        # the network look without costing real CPU at 40fps.
+        self.particles = []
+        num_particles = 90
+        for i in range(num_particles):
             self.particles.append({
-                "radius": radius,
-                "angle": angle,
-                "tilt_x": tilt_x,
-                "tilt_y": tilt_y,
-                "speed": speed,
-                "base_color": color
+                "x": random.uniform(0, 900),
+                "y": random.uniform(0, 500),
+                "vx": random.uniform(-0.25, 0.25),
+                "vy": random.uniform(-0.25, 0.25),
             })
         
         self._build_interface()
@@ -123,7 +111,8 @@ class CyberHUD(ctk.CTk):
         self.refresh_clock()
         self.after(500, self._start_background_tasks)
         self.gui_heartbeat_ticker()
-        self.animate_core_visualizer() 
+        self.animate_core_visualizer()
+        self.bind("<Control-m>", lambda event: self.toggle_mute())
 
     def _build_interface(self):
         # Configured layout tags to expand components fluidly across the screen space
@@ -161,6 +150,17 @@ class CyberHUD(ctk.CTk):
         self.lbl_time = ctk.CTkLabel(self.top_frame, text="SYS_TIME: 00:00:00", text_color=TERMINAL_BLUE, font=FONT_MAIN)
         self.lbl_time.pack(side="right", padx=20)
 
+        # --- MUTE TOGGLE (call-style hard mute) ---
+        # Ctrl+M also toggles this — see the bind() call at the end of __init__.
+        self.btn_mute = ctk.CTkButton(
+            self.top_frame, text="🎤  MUTE", font=FONT_BOLD,
+            fg_color="transparent", text_color=TEXT_COLOR,
+            hover_color=SB_BTN_HOVER, border_width=1, border_color=PRIMARY_GREEN,
+            width=120, height=32, corner_radius=8,
+            command=self.toggle_mute
+        )
+        self.btn_mute.pack(side="right", padx=(0, 10))
+
         # --- DYNAMIC VIEWPORTS ---
         self.viewport_container = ctk.CTkFrame(self, fg_color="transparent")
         self.viewport_container.grid(row=1, column=1, sticky="nsew", padx=(6, 12), pady=6)
@@ -183,6 +183,8 @@ class CyberHUD(ctk.CTk):
         self.visualizer_view = ctk.CTkFrame(self.viewport_container, fg_color=CARD_COLOR, corner_radius=16)
         self.canvas = ctk.CTkCanvas(self.visualizer_view, bg=CARD_COLOR, highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True, padx=20, pady=20)
+        self.canvas.bind("<Motion>", self._on_canvas_motion)
+        self.canvas.bind("<Leave>", self._on_canvas_leave)
 
         # --- BOTTOM BAR ---
         self.bottom_frame = ctk.CTkFrame(self, fg_color="transparent", height=40)
@@ -190,6 +192,30 @@ class CyberHUD(ctk.CTk):
         self.entry_cmd = ctk.CTkEntry(self.bottom_frame, placeholder_text="Manual command override...", fg_color=CARD_COLOR, text_color=TEXT_COLOR, font=FONT_MAIN, height=40, corner_radius=12, border_width=0)
         self.entry_cmd.pack(side="left", fill="x", expand=True)
         self.entry_cmd.bind("<Return>", lambda event: self._manual_override())
+
+    def toggle_mute(self):
+        """
+        Hard mute toggle — enforced in perception/speech_to_text.py's
+        record_audio(), so this isn't just a UI state flip that the voice
+        loop might ignore: while muted, the microphone is never opened.
+
+        Caveat worth knowing: if you hit mute mid-listen (the loop is
+        already inside a blocking recognizer.listen() call), it takes
+        effect at the start of the *next* listen cycle rather than
+        instantly — bounded to a few seconds by the short wake-word poll
+        timeout, not mid-sentence. Typed commands in the box below still
+        work while muted; this only affects the microphone.
+        """
+        muted = not is_muted()
+        set_muted(muted)
+
+        if muted:
+            self.btn_mute.configure(text="🔇  MUTED", fg_color=ACTIVE_ORANGE, text_color="#050508", border_color=ACTIVE_ORANGE)
+            self.lbl_listener.configure(text="● DAEMON: MUTED", text_color=MUTED_GREY)
+            self._write_to_box(self.txt_terminal, "[VOICE] Microphone muted by user.\n")
+        else:
+            self.btn_mute.configure(text="🎤  MUTE", fg_color="transparent", text_color=TEXT_COLOR, border_color=PRIMARY_GREEN)
+            self._write_to_box(self.txt_terminal, "[VOICE] Microphone unmuted.\n")
 
     def show_view(self, target_view):
         self.dashboard_view.grid_remove()
@@ -204,67 +230,82 @@ class CyberHUD(ctk.CTk):
             self.visualizer_view.grid(row=0, column=0, sticky="nsew")
             self.btn_vis.configure(fg_color=SB_BTN_HOVER)
 
+    def _on_canvas_motion(self, event):
+        self.mouse_x = event.x
+        self.mouse_y = event.y
+
+    def _on_canvas_leave(self, event):
+        self.mouse_x = None
+        self.mouse_y = None
+
+    def _blend_color(self, hex_color, bg_hex, fraction):
+        """Fakes per-line alpha (tkinter Canvas lines don't support real
+        transparency) by blending toward the canvas background color —
+        fraction=0 is full hex_color, fraction=1 is fully invisible."""
+        fraction = max(0.0, min(1.0, fraction))
+        c1 = tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+        c2 = tuple(int(bg_hex[i:i + 2], 16) for i in (1, 3, 5))
+        blended = tuple(int(c1[k] + (c2[k] - c1[k]) * fraction) for k in range(3))
+        return "#%02x%02x%02x" % blended
+
     def animate_core_visualizer(self):
-        """Renders the true 3D multidirectional orbiting particles with deep depth of field."""
+        """
+        Interactive 2D particle network.
+
+        Replaces the old static 3D orbital cloud: particles drift slowly
+        and wrap at the edges, link to nearby particles (line brightness
+        fades with distance), and link to the cursor when it's within
+        range — same effect as a "particles.js"-style background, just
+        drawn on a tkinter Canvas instead of a web canvas.
+
+        Speaking gives the whole network a brief "excited" pulse (faster
+        drift + longer cursor reach + brighter dots), echoing what the old
+        scale-pulse effect was going for.
+        """
         self.canvas.delete("all")
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
-        
+
         if width > 10 and height > 10:
-            cx, cy = width / 2, height / 2
-            
-            # Handle audio sync scale changes smoothly
+            LINK_DIST = 110
+            MOUSE_DIST = 150
+
+            speed_mult = 1.0
+            mouse_reach = MOUSE_DIST
             if self.is_speaking:
                 self.speech_tick += 1
-                if self.speech_tick % 3 == 0:
-                    self.target_scale = random.uniform(1.3, 1.9)
-            else:
-                self.target_scale = 1.0 + (0.06 * math.sin(time.time() * 2.5))
-                
-            self.current_scale += (self.target_scale - self.current_scale) * 0.15
-            
-            # Perspective focal constant for depth mapping calculations
-            focal_length = 300
-            rendered_particles = []
+                speed_mult = 2.2
+                mouse_reach = MOUSE_DIST * 1.3
 
             for p in self.particles:
-                # Progress individual orbital path positions
-                p["angle"] = (p["angle"] + p["speed"]) % (math.pi * 2)
-                
-                # Base ring spatial mapping calculation
-                x_raw = math.cos(p["angle"]) * p["radius"] * self.current_scale
-                y_raw = math.sin(p["angle"]) * p["radius"] * self.current_scale
-                z_raw = math.sin(p["angle"] + 1.5) * p["radius"] * self.current_scale
-                
-                # Perform 3D orientation transformation using inclination variables
-                x3d = x_raw
-                y3d = y_raw * math.cos(p["tilt_x"]) - z_raw * math.sin(p["tilt_x"])
-                z3d = y_raw * math.sin(p["tilt_y"]) + z_raw * math.cos(p["tilt_y"])
-                
-                # Shift structural axis back out into coordinate space depth
-                z_depth = z3d + 400 
-                
-                if z_depth > 50:
-                    # Apply classic perspective depth scaling factor calculation
-                    scale_factor = focal_length / z_depth
-                    screen_x = cx + (x3d * scale_factor)
-                    screen_y = cy + (y3d * scale_factor)
-                    
-                    # Compute particle sizing variables using distance metrics
-                    point_size = max(1, min(7, 3.5 * scale_factor))
-                    
-                    rendered_particles.append((z_depth, screen_x, screen_y, point_size, p["base_color"]))
+                p["x"] = (p["x"] + p["vx"] * speed_mult) % width
+                p["y"] = (p["y"] + p["vy"] * speed_mult) % height
 
-            # Sort items to implement proper rendering layering based on distance values
-            rendered_particles.sort(key=lambda item: item[0], reverse=True)
+            n = len(self.particles)
 
-            # Draw points sequentially onto interface window layer stack
-            for _, sx, sy, p_size, p_color in rendered_particles:
-                self.canvas.create_oval(
-                    sx - p_size, sy - p_size, 
-                    sx + p_size, sy + p_size, 
-                    fill=p_color, outline=""
-                )
+            # Particle-to-particle links
+            for i in range(n):
+                pi = self.particles[i]
+                for j in range(i + 1, n):
+                    pj = self.particles[j]
+                    d = math.hypot(pi["x"] - pj["x"], pi["y"] - pj["y"])
+                    if d < LINK_DIST:
+                        fraction = 0.15 + (d / LINK_DIST) * 0.75
+                        color = self._blend_color(PRIMARY_GREEN, CARD_COLOR, fraction)
+                        self.canvas.create_line(pi["x"], pi["y"], pj["x"], pj["y"], fill=color)
+
+            # Cursor links
+            if self.mouse_x is not None:
+                for p in self.particles:
+                    d = math.hypot(p["x"] - self.mouse_x, p["y"] - self.mouse_y)
+                    if d < mouse_reach:
+                        fraction = (d / mouse_reach) * 0.75
+                        color = self._blend_color(ACTIVE_ORANGE, CARD_COLOR, fraction)
+                        self.canvas.create_line(p["x"], p["y"], self.mouse_x, self.mouse_y, fill=color, width=1.4)
+
+            dot_color = ACTIVE_ORANGE if self.is_speaking else PRIMARY_GREEN
+            for p in self.particles:
+                self.canvas.create_oval(p["x"] - 1.6, p["y"] - 1.6, p["x"] + 1.6, p["y"] + 1.6, fill=dot_color, outline="")
 
         self.after(25, self.animate_core_visualizer)
 
@@ -710,6 +751,21 @@ class CyberHUD(ctk.CTk):
 
                         while self.is_speaking:
                             time.sleep(0.1)
+
+                    # ============================================================
+                    # MUTED — skip listening entirely, don't open the mic
+                    # ============================================================
+
+                    if is_muted():
+
+                        self.ui_queue.put({
+                            "type": "state",
+                            "text": "● DAEMON: MUTED",
+                            "color": MUTED_GREY
+                        })
+
+                        time.sleep(0.2)
+                        continue
 
                     # ============================================================
                     # FOLLOW-UP MODE

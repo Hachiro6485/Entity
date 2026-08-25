@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+import threading
 import wave
 
 import numpy as np
@@ -31,6 +32,30 @@ from core.providers import PROVIDERS
 #
 # This means we only have ONE transcription system to maintain.
 # =============================================================================
+
+
+# =============================================================================
+# HARDWARE MUTE
+# =============================================================================
+#
+# A single, shared source of truth for "is the mic allowed to be opened at
+# all right now" — used by the GUI's mute button (and available to main.py
+# too, since both entry points import this module). This is enforced inside
+# record_audio() itself, below the level of both entry points' polling
+# loops, so muting genuinely means the microphone is never opened while
+# muted, not just "the UI shows a muted icon while still listening."
+_mute_event = threading.Event()
+
+
+def set_muted(muted: bool):
+    if muted:
+        _mute_event.set()
+    else:
+        _mute_event.clear()
+
+
+def is_muted() -> bool:
+    return _mute_event.is_set()
 
 
 # One recognizer shared by the whole application.
@@ -86,8 +111,11 @@ def record_audio(timeout=15, phrase_time_limit=15):
 
     Returns:
         numpy.float32 audio array
-        or None if nothing was captured.
+        or None if nothing was captured (including: muted).
     """
+
+    if is_muted():
+        return None
 
     try:
 
@@ -339,9 +367,16 @@ def remove_wake_words(text):
     )
 
 
-def listen_for_wake_word():
+def listen_for_wake_word(timeout=4):
     """
     Listens once and checks whether a wake word was spoken.
+
+    timeout defaults to 4 seconds (rather than record_audio's normal 15)
+    specifically for the idle wake-word poll — this loop runs continuously,
+    so a shorter timeout just means it re-checks more often, which also
+    bounds how long mute takes to fully kick in (worst case: the tail end
+    of a listen call already in progress when you hit mute) to a few
+    seconds instead of up to 15.
 
     Returns:
 
@@ -352,7 +387,7 @@ def listen_for_wake_word():
             otherwise
     """
 
-    audio = record_audio()
+    audio = record_audio(timeout=timeout)
 
     if audio is None:
         return False, ""

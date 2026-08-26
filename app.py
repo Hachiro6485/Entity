@@ -353,9 +353,38 @@ class CyberHUD(ctk.CTk):
         code = code.strip()
 
         from security.sandbox import run_sandboxed
+
         result = run_sandboxed(code, timeout=20)
+
+# ---------------------------------------------------------
+# HARD FAILURE PROPAGATION
+#
+# The sandbox distinguishes between:
+#
+#   success=True
+#       Python actually ran successfully.
+#
+#   success=False
+#       Python crashed, timed out, or otherwise failed.
+#
+# The executor relies on exceptions to mark a step as
+# "failed" and stop the plan.
+#
+# Do NOT return a failed Python result as a normal string,
+# because the planner could mistake the traceback for valid
+# output and pass it into a later tool.
+# ---------------------------------------------------------
+
         if result.blocked:
-            return f"Code Error: {result.as_message()}"
+            raise RuntimeError(
+                result.as_message()
+            )
+
+        if not result.success:
+            raise RuntimeError(
+                result.as_message()
+            )
+
         return result.output
 
     def _authorize_destructive_action(
@@ -762,6 +791,7 @@ class CyberHUD(ctk.CTk):
         # Save the user's new message so future requests can remember it.
         add_memory(f"User: {command}")
 
+        waiting_step = None
         
         if self.waiting_for_plan_input:
 
@@ -769,7 +799,6 @@ class CyberHUD(ctk.CTk):
                 "DEBUG APP: received answer for pending plan"
             )
 
-            waiting_step = None
 
             for step_id, data in self.pending_state.items():
 
@@ -777,56 +806,67 @@ class CyberHUD(ctk.CTk):
                     waiting_step = step_id
                     break
 
-            if waiting_step:
+        if waiting_step:
 
-                self.pending_state[waiting_step]["status"] = "success"
-                self.pending_state[waiting_step]["output"] = command
+            print(
+                "DEBUG APP: received answer for pending plan"
+            )
 
-                print(
-                    f"DEBUG APP: stored answer '{command}' in {waiting_step}"
+            print(
+                f"DEBUG APP: received information: '{command}'"
+            )
+
+    # ---------------------------------------------------------
+    # The old plan has now reached the point where information
+    # was missing.
+    #
+    # DO NOT blindly resume the old plan.
+    #
+    # The old plan was generated before the user's answer was
+    # known, so its remaining steps may contain assumptions
+    # based on missing information.
+    #
+    # Instead, rebuild the plan using:
+    #
+    #   1. The original user goal
+    #   2. The user's newly supplied information
+    #
+    # This lets the planner create the correct tool calls.
+    # ---------------------------------------------------------
+
+            original_goal = "\n".join(
+                self.active_plan_context
+            )
+
+            replanning_context = (
+                f"Original user request:\n"
+                f"{original_goal}\n\n"
+                f"Additional information supplied by the user:\n"
+                f"{command}\n\n"
+                f"Use the new information to continue the original request. "
+                f"Do not ask for information that has already been provided."
+            )
+
+            print(
+                "DEBUG APP: Replanning with supplied information..."
+            )
+
+            new_plan = planner.generate_plan(
+                replanning_context
+            )
+
+            if not new_plan:
+
+                result_text = (
+                    "I couldn't continue the task because "
+                    "I was unable to generate the next steps."
                 )
 
+                self.pending_plan = None
+                self.pending_state = None
                 self.waiting_for_plan_input = False
-
-                state = executor.resume_plan(
-                    self.pending_plan,
-                    self.pending_state,
-                    python_runner=self.run_code_and_capture
-                )
-
-                print("\nDEBUG RESUME STATE:")
-                print(json.dumps(state, indent=2))
-                print()
-
-                waiting_again = False
-
-                for _, data in state.items():
-
-                    if data.get("status") == "waiting":
-                        waiting_again = True
-                        break
-
-                if waiting_again:
-
-                    self.pending_state = state
-                    self.waiting_for_plan_input = True
-
-                    result_text = verifier.verify_and_report(
-                    self.pending_plan,
-                    state,
-                        command
-                    )
-
-                else:
-
-                    result_text = verifier.verify_and_report(
-                        self.pending_plan,
-                        state,
-                        command
-                    )
-
-                    self.pending_plan = None
-                    self.pending_state = None
+                self.planning_mode = False
+                self.active_plan_context.clear()
 
                 self.ui_queue.put({
                     "type": "chat",
@@ -834,11 +874,93 @@ class CyberHUD(ctk.CTk):
                     "text": result_text
                 })
 
-                add_memory(f"The Entity: {result_text}")
-                
-                self.vocalize_response(result_text)
+                add_memory(
+                    f"The Entity: {result_text}"
+                )
+
+                self.vocalize_response(
+                    result_text
+                )
 
                 return
+
+    # ---------------------------------------------------------
+    # Replace the old waiting plan with the newly generated
+    # plan.
+    # ---------------------------------------------------------
+
+            self.pending_plan = None
+            self.pending_state = None
+            self.waiting_for_plan_input = False
+
+            self.ui_queue.put({
+                "type": "state",
+                "text": "● DAEMON: EXECUTING PLAN...",
+                "color": ACTIVE_ORANGE
+            })
+
+            self.ui_queue.put({
+                "type": "log",
+                "text": "[PLANNER] Rebuilt plan using the information supplied by the user."
+            })
+
+            def log_to_terminal(text: str):
+                self.ui_queue.put({
+                    "type": "log",
+                    "text": text
+                })
+
+            state = executor.execute_plan(
+                new_plan,
+                log_callback=log_to_terminal,
+                python_runner=self.run_code_and_capture
+            )
+
+    # ---------------------------------------------------------
+    # Check whether the new plan needs another question.
+    # ---------------------------------------------------------
+
+            waiting_again = False
+
+            for step_id, data in state.items():
+
+                if data.get("status") == "waiting":
+
+                    waiting_again = True
+                    break
+
+            if waiting_again:
+
+                self.pending_plan = new_plan
+                self.pending_state = state
+                self.waiting_for_plan_input = True
+
+            else:
+
+                self.pending_plan = None
+                self.pending_state = None
+
+            result_text = verifier.verify_and_report(
+                new_plan,
+                state,
+                original_goal
+            )
+
+            self.ui_queue.put({
+                "type": "chat",
+                "sender": "ENTITY",
+                "text": result_text
+            })
+
+            add_memory(
+                    f"The Entity: {result_text}"
+            )
+
+            self.vocalize_response(
+                result_text
+            )
+
+            return
 
         self.ui_queue.put({"type": "chat", "sender": "USER", "text": command})
         

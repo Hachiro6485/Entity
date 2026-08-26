@@ -30,13 +30,16 @@ set up one or two providers.
 import os
 import time
 
-try:
-    # Optional dependency — if python-dotenv isn't installed we just fall
-    # back to whatever is already in the real environment variables.
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+# config.py resolves and loads .env explicitly (relative to the project
+# root via os.path.abspath(__file__), not the process's current working
+# directory), so importing it here — even though nothing below reads from
+# it directly — guarantees .env is loaded correctly regardless of which
+# module happens to get imported first or what directory Entity was
+# launched from. This replaces a previous bare load_dotenv() call here,
+# which only searched upward from the current working directory and could
+# silently miss .env if Entity were ever launched from a shortcut or
+# scheduled task with a different working directory.
+import config  # noqa: F401
 
 
 def _provider(name, base_url, env_var, default_model, model_env_var=None):

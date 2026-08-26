@@ -1,7 +1,6 @@
 import json
 import time
 from openai import OpenAI
-from core import brain
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IMPORT SHARED PROVIDER INFRASTRUCTURE
@@ -321,8 +320,17 @@ def needs_planning(command: str) -> bool:
 
 def ai_needs_planning(command):
     """
-    Uses The Entity's LLM brain to decide whether
-    a request requires multi-step planning.
+    Uses a direct LLM call to decide whether a request requires multi-step
+    planning.
+
+    This used to call brain.think(prompt), which drags in Entity's full
+    tool-calling system prompt and tool definitions for what's really just
+    a YES/NO classification — that's what caused the "attempted to call
+    tool 'json' which was not in request.tools" 400 errors: the model got
+    confused between "answer YES/NO" and "call a tool." classify_task()
+    just above already does this the right way (direct completion, no
+    tools attached); this follows the same pattern instead of going
+    through brain.
     """
 
     prompt = f"""
@@ -346,20 +354,37 @@ Request:
 {command}
 """
 
-    decision = brain.think(prompt)
+    messages = [
+        {"role": "system", "content": "You are a classifier. Respond with exactly one word: YES or NO. Nothing else."},
+        {"role": "user", "content": prompt}
+    ]
 
-    if not isinstance(decision, dict):
-        return False
+    for provider in PROVIDERS:
 
-    answer = str(
-        decision.get("value", "")
-    ).upper()
+        if time.time() < COOLDOWN_REGISTRY.get(provider["name"], 0):
+            continue
 
-    print(
-        f"DEBUG PLANNER AI DECISION: {answer}"
-    )
+        try:
+            client = OpenAI(base_url=provider["base_url"], api_key=provider["api_key"])
+            response = client.chat.completions.create(
+                model=provider["model"],
+                messages=messages,
+                temperature=0
+            )
+            answer = (response.choices[0].message.content or "").strip().upper()
 
-    return "YES" in answer
+            print(
+                f"DEBUG PLANNER AI DECISION: {answer}"
+            )
+
+            return "YES" in answer
+
+        except Exception as e:
+            COOLDOWN_REGISTRY[provider["name"]] = time.time() + COOLDOWN_DURATION_SECONDS
+            continue
+
+    print("DEBUG PLANNER AI DECISION: ALL AI NODES BUSY.")
+    return False
 
 
 def generate_plan(user_goal: str) -> list | None:

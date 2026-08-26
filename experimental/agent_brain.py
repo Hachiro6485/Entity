@@ -15,7 +15,7 @@ import re
 from openai import OpenAI
 
 from core.providers import PROVIDERS, COOLDOWN_REGISTRY, COOLDOWN_DURATION_SECONDS
-from security.sandbox import run_sandboxed, cli_confirm_callback
+from security.sandbox import run_sandboxed
 import time
 
 # Prefer Groq for speed since this experimental branch is meant to think
@@ -78,7 +78,8 @@ def extract_code(text):
 
 
 def execute_sandbox_code(code_string, timeout: int = 20):
-    """Executes code through the shared, actually-restrictive sandbox
-    instead of a bare exec() with no checks at all."""
-    result = run_sandboxed(code_string, timeout=timeout, confirm_callback=cli_confirm_callback)
+    """Executes code through the shared sandbox. File-interfering code
+    triggers the same PIN-gated popup as delete_file; everything else
+    runs unrestricted."""
+    result = run_sandboxed(code_string, timeout=timeout)
     return result.as_message()

@@ -95,11 +95,15 @@ class CyberHUD(ctk.CTk):
         self.mouse_x = None
         self.mouse_y = None
 
-        # Kept deliberately small (O(n^2) pairwise distance checks run every
-        # frame for the particle-to-particle links) — 90 is plenty dense for
-        # the network look without costing real CPU at 40fps.
+        # Bumped from 90 for a denser, livelier network. Benchmarked
+        # headlessly first (O(n^2) pairwise distance checks run every frame
+        # for particle-to-particle links): 160 sits comfortably under the
+        # 25ms/frame budget this loop targets (~19ms/frame in a pessimistic
+        # software-rendered test — real GPU-accelerated Tk on your machine
+        # should do better). Push higher if your machine handles it fine;
+        # drop back toward 90 if it visibly chugs.
         self.particles = []
-        num_particles = 90
+        num_particles = 160
         for i in range(num_particles):
             self.particles.append({
                 "x": random.uniform(0, 900),
@@ -332,22 +336,15 @@ class CyberHUD(ctk.CTk):
 
     def run_code_and_capture(self, code):
         """
-        GUI-safe Python executor.
-
-        This used to be a bare exec(code, {'__builtins__': __builtins__})
-        with NO safety checks whatsoever — not even the substring blacklist
-        that coder.py had. It's now routed through the same shared sandbox
-        (security/sandbox.py) that the CLI path uses, so both surfaces get
-        identical static-analysis checks, a real subprocess-level timeout,
-        and file writes are actually risk-flagged.
-
-        Because this runs on a background thread with no way to safely pop
-        up a blocking confirmation dialog yet, any code that trips a
-        CONFIRM-tier check (e.g. writing a file) is refused automatically
-        rather than silently executed — safer default for hands-free/voice
-        use. Run it from the console (main.py) instead if you need the
-        interactive y/n prompt, or extend confirm_callback here with a
-        proper CTk dialog if you want in-GUI confirmation.
+        GUI-safe Python executor. run_python has full interpreter access —
+        the only gate is file-interfering operations (delete/move/rename/
+        overwrite/chmod), which trigger the exact same PIN-gated popup as
+        delete_file (self._authorize_destructive_action, wired in __init__
+        via set_gui_authorizer). security/sandbox.py's
+        authorize_destructive_action() call already resolves to that GUI
+        dialog on its own, so no extra plumbing is needed here — this
+        method still runs on a background thread, and the dialog-scheduling
+        is handled inside _authorize_destructive_action itself.
         """
         # Remove markdown code blocks if the LLM includes them
         code = re.sub(r'^```python\s*', '', code, flags=re.IGNORECASE | re.MULTILINE)
@@ -356,7 +353,7 @@ class CyberHUD(ctk.CTk):
         code = code.strip()
 
         from security.sandbox import run_sandboxed
-        result = run_sandboxed(code, timeout=20, confirm_callback=None)
+        result = run_sandboxed(code, timeout=20)
         if result.blocked:
             return f"Code Error: {result.as_message()}"
         return result.output

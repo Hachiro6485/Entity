@@ -125,15 +125,15 @@ def authorize_destructive_action(
     )
     print()
     print(
-        "This action can permanently change or destroy data."
+        "This action may permanently change or destroy data."
     )
     print("=" * 60)
 
     confirmation = input(
-        "Type DELETE to authorize this action: "
+        "Type YES to authorize this action: "
     ).strip()
 
-    if confirmation != "DELETE":
+    if confirmation != "YES":
 
         print(
             "[SECURITY] Action cancelled."

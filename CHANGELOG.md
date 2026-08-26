@@ -153,6 +153,75 @@ still on you to do. Read the **"before you run this"** section first.
     exact drawing calls used in `app.py`, not just a mockup — confirmed
     the cursor-starburst pattern renders correctly.
 
+## Requested fixes + run_python policy change (post-delivery)
+
+Five fixes from the previous review pass, plus a deliberate run_python
+policy change:
+
+1. **`core/executor.py` no longer depends on import order for its tool
+   registry.** Added `import tools.entity_tools` directly (previously only
+   `app.py` imported it, so `get_tool_function()` only worked if the GUI
+   happened to run first — anything calling `execute_plan()` from another
+   entry point would have failed with `Tool not registered: ...`).
+2. **Removed ~150 lines of dead code from `core/executor.py`**:
+   `_tool_create_folder`, `_tool_find_files`, `_tool_move_files`,
+   `_tool_list_files`, `_tool_search_web`, `_tool_open_app`,
+   `_tool_type_text`, `_tool_media_control`, `_tool_chat`, and the
+   now-unused `_normalize_path` helper — `_dispatch()` only ever used the
+   registry (`tools/entity_tools.py`) or the special-cased `run_python`;
+   these were never called. `_tool_run_python` is the one exception and
+   was kept, since it needs the `python_runner` injection the registry
+   doesn't support.
+3. **Fixed inconsistent `.env` loading.** `core/providers.py` now imports
+   `config` (which resolves `.env`'s path explicitly relative to the
+   project root) instead of calling its own bare `load_dotenv()` (which
+   only searched from the current working directory and could miss `.env`
+   if Entity were ever launched from a different working directory).
+4. **Added the missing `.gitignore`** (`.env`, `__pycache__/`, `*.pyc`,
+   `memory_storage/memory.json`).
+5. **`planner.ai_needs_planning()` no longer routes through
+   `brain.think()`.** It's a plain YES/NO classification and was dragging
+   in Entity's full tool-calling system prompt for no reason — that
+   mismatch (a classifier prompt vs. a tool-attached brain) is what caused
+   the "attempted to call tool 'json'" 400 errors in the first place. It
+   now makes its own direct completion call, matching the pattern
+   `classify_task()` already used in the same file. Removed the
+   now-unused `from core import brain` import from `planner.py`.
+
+**run_python policy change — full control restored, file operations
+excepted:** `security/sandbox.py` no longer blocks or restricts
+subprocess, ctypes, sockets, eval/exec, os.system, dynamic getattr, or
+anything else outside the filesystem. The only thing still gated is
+file-interfering operations (`os.remove`/`unlink`/`rmdir`/`rename`/
+`replace`/`truncate`/`chmod`/`chown`, `shutil.rmtree`/`move`/`copy`/
+`copytree`, and `open()` in a write/append/exclusive mode) — those now
+trigger `security/access_control.py`'s `authorize_destructive_action()`,
+the exact same typed-DELETE + Entity PIN popup (or CLI prompt) that
+`delete_file` already used, rather than the sandbox's own separate
+confirmation flow. `cli_confirm_callback` and the `confirm_callback`
+parameter on `run_sandboxed()` were removed as a result — no longer
+needed now that `authorize_destructive_action` handles both the GUI and
+CLI cases on its own. `coder.py`, `experimental/agent_brain.py`, and
+`app.py`'s `run_code_and_capture` were all updated to match the new
+`run_sandboxed(code, timeout=...)` signature.
+
+Known, accepted gap: this is a static-analysis check over Python's file
+I/O surface. It can't see through `os.system("del somefile.txt")` or an
+obfuscated equivalent — shelling out is deliberately unrestricted now, so
+it can also be used to touch files without tripping this specific gate.
+Closing that would mean not giving run_python full control back, which
+was the explicit point of this change.
+
+## Visualizer: particle count bump (post-delivery)
+
+`app.py`'s particle count raised 90 → 160. Benchmarked headlessly first
+(the network draws a line for every nearby *pair*, so count matters for
+frame time): 160 sits comfortably under the loop's 25ms/frame budget even
+in a pessimistic software-rendered test environment; real GPU-accelerated
+Tk rendering on Windows should have more headroom than that. Push higher
+if it stays smooth on your machine; drop back toward 90 if it visibly
+chugs.
+
 ## Deliberately left unchanged
 
 - The `open_app` logic duplication between `core/router.py` and

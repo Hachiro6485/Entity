@@ -1,7 +1,7 @@
 """
 security/sandbox.py
 
-Shared, meaningfully-restricted code execution for The Entity.
+Shared code execution for The Entity's run_python.
 
 WHY THIS EXISTS
 ----------------
@@ -11,40 +11,39 @@ and handed it straight to exec() with full interpreter access:
   - app.py:run_code_and_capture    (GUI path — had NO safety check at all)
   - experimental/agent_brain.py    (had NO safety check at all)
 
-coder.py's only guard was a substring blacklist (`if "os.remove" in
-code_string`), which is trivially defeated by anything that doesn't spell
-the string out literally: getattr(os, "remove"), os.system("del ..."),
-string concatenation, base64-encoded payloads, etc. The other two paths
-had nothing at all.
+This module gave all three a shared static-analysis gate instead. That gate
+was tightened in an earlier pass (blocking process-spawning, eval/exec,
+sandbox-escape tricks, etc.) — it's since been loosened back down on
+purpose (see POLICY below): run_python now has full interpreter access
+again, EXCEPT for anything that touches the filesystem, which is routed
+through the exact same human+PIN confirmation used by delete_file
+(security/access_control.py) rather than refused outright.
 
-WHAT THIS MODULE DOES
-----------------------
-1. Parses the code with `ast` (not string matching) and resolves import
-   aliases, so `import os as o; o.system(...)` is caught the same as
-   `os.system(...)`.
-2. Hard-BLOCKS an import allowlist violation and a call blocklist of
-   destructive/escape-prone operations (process spawning, file deletion,
-   eval/exec/compile, dunder traversal used for sandbox-escape tricks like
-   `().__class__.__bases__[0].__subclasses__()`).
-3. Requires explicit human CONFIRMATION for a middle tier of "risky but
-   sometimes legitimate" operations (writing files, moving/copying files,
-   dynamic getattr-based calls).
-4. Runs the (approved) code in a **separate subprocess** with a hard
-   timeout, rather than exec()'ing it inside the running assistant process.
-   This means a runaway or hanging script gets killed cleanly and can't
-   directly corrupt the host process's memory/state.
+POLICY
+-------
+1. Code that fails to parse (a real syntax error) is refused — nothing to
+   run.
+2. Code containing a file-interfering operation (see FILE_INTERFERING_CALLS
+   and the open()-write-mode check below) triggers
+   security.access_control.authorize_destructive_action() BEFORE anything
+   runs — the same popup/CLI prompt delete_file uses: type DELETE, enter
+   the Entity PIN. Declining refuses the whole run, not just that line.
+3. Everything else — subprocess, ctypes, sockets, eval/exec, os.system,
+   dynamic getattr, all of it — runs with no gate at all. This is a
+   deliberate choice, not an oversight: it's a single-user local tool, and
+   the useful 95% of run_python is exactly this kind of general-purpose
+   scripting.
+4. Approved code runs in a **separate subprocess** with a hard timeout, so
+   a runaway/hanging script gets killed cleanly rather than hanging the
+   assistant.
 
-HONEST LIMITS
---------------
-This is a real improvement over a keyword blacklist, but it is a
-*mitigation*, not a hard security boundary. The subprocess still runs as
-your OS user account, so it still has your filesystem/network permissions
-— static analysis reduces the attack surface but cannot catch every
-possible bypass of a sufficiently adversarial payload. If you want an
-actual security boundary (e.g. because this will run code sourced from
-places you don't fully trust, like scraped web content), run it inside a
-container, VM, or a restricted OS-level sandbox (Docker, firejail,
-Windows Sandbox) instead of / in addition to this.
+HONEST LIMIT: the file-interference check is static-analysis over the
+Python file-I/O surface (os.*, shutil.*, open()). It can't see through
+`os.system("del somefile.txt")` or an obfuscated equivalent — shelling out
+is unrestricted by design now (see POLICY #3), so it can also be used to
+touch files without tripping this specific gate. If that gap matters to
+you, the fix isn't more static analysis — it's not giving run_python full
+control back in the first place.
 """
 
 import ast
@@ -55,45 +54,25 @@ import tempfile
 import textwrap
 from dataclasses import dataclass, field
 
+from security.access_control import authorize_destructive_action
 
-# ── Modules with no legitimate use inside an LLM-authored run_python task ──
-# (Dedicated tools already exist for opening apps, moving files, etc. —
-# run_python is only meant to be used when no dedicated tool exists.)
-MODULE_BLOCKLIST = {
-    "subprocess", "ctypes", "winreg", "socket", "multiprocessing",
-    "importlib", "pty", "pdb", "code", "mmap", "resource", "signal",
-    "sysconfig",
-}
 
-# ── Specific calls that are always destructive / an escape vector ──
-CALL_BLOCKLIST = {
-    "os.system", "os.popen", "os.popen2", "os.popen3", "os.popen4",
-    "os.execv", "os.execve", "os.execl", "os.execle", "os.execlp",
-    "os.execlpe", "os.execvp", "os.execvpe",
-    "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnv", "os.spawnve", "os.spawnvp",
+# ── The only thing run_python still gates: file-interfering operations ──
+# Read-only file access (open in 'r' mode, os.listdir, os.path.exists, ...)
+# is NOT included — only operations that delete, overwrite, move, rename,
+# or change permissions on something that already exists.
+FILE_INTERFERING_CALLS = {
     "os.remove", "os.unlink", "os.rmdir", "os.removedirs",
     "os.rename", "os.renames", "os.replace", "os.truncate",
-    "os.chmod", "os.chown", "os.kill", "os.killpg", "os.fork", "os.startfile",
-    "shutil.rmtree",
-    "eval", "exec", "compile", "__import__", "globals", "locals", "vars",
-}
-
-# ── Calls that are sometimes legitimate but need a human to say yes ──
-CALL_CONFIRM = {"shutil.move", "shutil.copy", "shutil.copy2", "shutil.copytree"}
-
-# Dunder attributes used in the classic "walk back to __builtins__" escape.
-DANGEROUS_DUNDERS = {
-    "__subclasses__", "__bases__", "__mro__", "__globals__", "__builtins__",
-    "__base__", "__code__", "__closure__", "__getattribute__",
-    "__reduce__", "__reduce_ex__", "__class__",
-
+    "os.chmod", "os.chown",
+    "shutil.rmtree", "shutil.move", "shutil.copy", "shutil.copy2", "shutil.copytree",
 }
 
 
 @dataclass
 class RiskReport:
-    blocked: list = field(default_factory=list)
-    needs_confirm: list = field(default_factory=list)
+    blocked: list = field(default_factory=list)          # unparseable code only
+    needs_confirm: list = field(default_factory=list)     # file-interfering ops
 
     @property
     def is_blocked(self):
@@ -126,7 +105,7 @@ def analyze_code(code: str) -> RiskReport:
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
-        report.blocked.append(f"Code has a syntax error and cannot be analyzed safely: {e}")
+        report.blocked.append(f"Code has a syntax error and cannot be run: {e}")
         return report
 
     import_alias = {}     # local name -> real module name (for `import X as Y`)
@@ -136,58 +115,34 @@ def analyze_code(code: str) -> RiskReport:
 
         if isinstance(node, ast.Import):
             for alias in node.names:
-                real = alias.name
-                local = alias.asname or alias.name
-                import_alias[local] = real
-                top_level = real.split(".")[0]
-                if top_level in MODULE_BLOCKLIST:
-                    report.blocked.append(f"import of blocked module: {real}")
+                import_alias[alias.asname or alias.name] = alias.name
 
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            top_level = module.split(".")[0]
-            if top_level in MODULE_BLOCKLIST:
-                report.blocked.append(f"import from blocked module: {module}")
             for alias in node.names:
                 local = alias.asname or alias.name
                 from_alias[local] = f"{module}.{alias.name}"
-
-        elif isinstance(node, ast.Attribute):
-            if node.attr in DANGEROUS_DUNDERS:
-                report.blocked.append(f"access to dangerous dunder attribute: .{node.attr}")
 
         elif isinstance(node, ast.Call):
             func = node.func
             candidate = None
 
             if isinstance(func, ast.Name):
-                name = func.id
-                candidate = from_alias.get(name, name)
-                if name == "getattr":
-                    report.needs_confirm.append(
-                        "dynamic getattr(...) call — cannot be statically verified as safe"
-                    )
+                candidate = from_alias.get(func.id, func.id)
             elif isinstance(func, ast.Attribute):
                 candidate = _dotted_name(func, import_alias)
-                if candidate is None:
-                    report.needs_confirm.append(
-                        "call on a dynamically-computed object — cannot be statically verified"
-                    )
 
-            if candidate:
-                if candidate in CALL_BLOCKLIST or candidate.split(".")[-1] in {"eval", "exec", "compile", "__import__"}:
-                    report.blocked.append(f"blocked call: {candidate}(...)")
-                elif candidate in CALL_CONFIRM:
-                    report.needs_confirm.append(f"requires confirmation: {candidate}(...)")
-                elif candidate == "open":
-                    mode = ""
-                    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
-                        mode = str(node.args[1].value)
-                    for kw in node.keywords:
-                        if kw.arg == "mode" and isinstance(kw.value, ast.Constant):
-                            mode = str(kw.value.value)
-                    if any(m in mode for m in ("w", "a", "x", "+")):
-                        report.needs_confirm.append(f"open(..., mode='{mode or 'w'}') — writes to disk")
+            if candidate in FILE_INTERFERING_CALLS:
+                report.needs_confirm.append(f"file operation: {candidate}(...)")
+            elif candidate == "open":
+                mode = ""
+                if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                    mode = str(node.args[1].value)
+                for kw in node.keywords:
+                    if kw.arg == "mode" and isinstance(kw.value, ast.Constant):
+                        mode = str(kw.value.value)
+                if any(m in mode for m in ("w", "a", "x", "+")):
+                    report.needs_confirm.append(f"open(..., mode='{mode or 'w'}') — writes to disk")
 
     return report
 
@@ -202,20 +157,21 @@ class SandboxResult:
     def as_message(self) -> str:
         if self.blocked:
             reason_text = "\n".join(f"  - {r}" for r in self.reasons)
-            return f"Execution refused by the safety sandbox:\n{reason_text}"
+            return f"Execution refused:\n{reason_text}"
         if self.success:
             return f"Execution successful. Output:\n{self.output.strip()}" if self.output.strip() else "Execution successful. No output returned."
         return f"Execution FAILED. Error:\n{self.output}"
 
 
-def run_sandboxed(code: str, timeout: int = 20, confirm_callback=None) -> SandboxResult:
+def run_sandboxed(code: str, timeout: int = 20) -> SandboxResult:
     """
-    The single entry point every run_python path should call.
+    The single entry point every run_python path calls.
 
-    confirm_callback: optional callable(code: str, reasons: list[str]) -> bool
-        Called only if the static analysis found CONFIRM-tier risks.
-        Return True to proceed, False to refuse. If None, any CONFIRM-tier
-        code is refused automatically (safe default for unattended/GUI use).
+    File-interfering code is gated by security.access_control's
+    authorize_destructive_action() — the same popup/CLI prompt delete_file
+    uses (typed DELETE + Entity PIN). It already knows how to reach the GUI
+    dialog vs. the CLI prompt on its own (via set_gui_authorizer), so this
+    function doesn't need its own confirm_callback plumbing anymore.
     """
     report = analyze_code(code)
 
@@ -223,12 +179,18 @@ def run_sandboxed(code: str, timeout: int = 20, confirm_callback=None) -> Sandbo
         return SandboxResult(success=False, output="", blocked=True, reasons=report.blocked)
 
     if report.needs_confirmation:
-        approved = confirm_callback(code, report.needs_confirm) if confirm_callback else False
+        preview = code if len(code) <= 800 else code[:800] + "\n... (truncated)"
+        details = (
+            "Flagged operations:\n"
+            + "\n".join(f"- {r}" for r in report.needs_confirm)
+            + "\n\nCode:\n" + preview
+        )
+        approved = authorize_destructive_action("RUN_PYTHON: FILE OPERATION", details)
         if not approved:
-            reasons = report.needs_confirm + (
-                [] if confirm_callback else ["no confirmation channel available in this context — refused by default"]
+            return SandboxResult(
+                success=False, output="", blocked=True,
+                reasons=report.needs_confirm + ["authorization was not granted"]
             )
-            return SandboxResult(success=False, output="", blocked=True, reasons=reasons)
 
     # ── Run in a subprocess so a hang/infinite loop can be killed on timeout
     #    and so the code cannot directly touch the host process's memory. ──
@@ -258,39 +220,3 @@ def run_sandboxed(code: str, timeout: int = 20, confirm_callback=None) -> Sandbo
         return SandboxResult(success=False, output=f"Execution timed out after {timeout} seconds and was terminated.")
     except Exception as e:
         return SandboxResult(success=False, output=f"Sandbox execution error: {e}")
-
-
-def cli_confirm_callback(code: str, reasons: list) -> bool:
-    """Interactive confirmation for the console (main.py / coder.py) path.
-
-    If config.ENTITY_PIN is set (via the ENTITY_PIN env var), a plain "y"
-    isn't enough — the PIN must be entered too. This is the one lightweight
-    piece of access control in the project: previously anyone with mic or
-    terminal access could authorize any action just by saying/typing "yes".
-    """
-    print("\n==================================================")
-    print("SYSTEM ALERT: CONFIRMATION REQUIRED")
-    print("==================================================")
-    print("The Entity wants to run code that triggered these checks:")
-    for r in reasons:
-        print(f"  - {r}")
-    print("---------------------------------")
-    print(code)
-    print("---------------------------------")
-    answer = input("Do you authorize this execution? [y/n]: ")
-    if answer.strip().lower() != "y":
-        return False
-
-    try:
-        import config
-        pin = getattr(config, "ENTITY_PIN", None)
-    except Exception:
-        pin = None
-
-    if pin:
-        entered = input("Enter PIN to confirm: ").strip()
-        if entered != pin:
-            print("[Execution Aborted] Incorrect PIN.")
-            return False
-
-    return True

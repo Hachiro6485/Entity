@@ -5,6 +5,12 @@ import traceback
 import sys
 import io
 from tools.tool_registry import get_tool_function
+import tools.entity_tools  # noqa: F401 — import side effect: this module's
+# @entity_tool decorators are what populate TOOL_REGISTRY. Previously only
+# app.py imported this, so get_tool_function() below only worked when the
+# GUI happened to run first — importing it directly here means the plan
+# executor's tool registry is populated regardless of which entry point
+# (main.py, app.py, a test script) calls execute_plan() first.
 import re
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -17,119 +23,17 @@ execution_state: dict = {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FILE SYSTEM TOOL IMPLEMENTATIONS
-# These are self-contained so the executor never needs to import coder.py
-# or router.py for file operations — keeping the dependency chain clean.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _tool_create_folder(args: dict) -> str:
-    """Creates a directory. Expands environment variables like %USERNAME%."""
-    path = _normalize_path(os.path.expandvars(args.get("path", "")))
-    if not path:
-        raise ValueError("create_folder requires a 'path' argument.")
-    os.makedirs(path, exist_ok=True)
-    return f"Folder created: {path}"
-
-
-def _tool_find_files(args: dict) -> str:
-    """
-    Recursively walks a directory and collects all files matching an extension.
-    Returns a JSON-encoded list of full absolute paths so move_files can
-    consume it directly via $step_N.output resolution.
-    """
-    extension = args.get("extension", "")
-    directory = _normalize_path(os.path.expandvars(args.get("directory", "")))
-
-    if not extension:
-        raise ValueError("find_files requires an 'extension' argument (e.g. '.pdf').")
-    if not directory:
-        raise ValueError("find_files requires a 'directory' argument.")
-    if not os.path.exists(directory):
-        raise FileNotFoundError(f"Directory not found: {directory}")
-
-    # Normalise extension casing and ensure the dot is present
-    if not extension.startswith("."):
-        extension = "." + extension
-
-    matches = []
-    for root, _, files in os.walk(directory):
-        for f in files:
-            if f.lower().endswith(extension.lower()):
-                matches.append(os.path.join(root, f))
-
-    if not matches:
-        return json.dumps([])   # Return empty list — move_files will handle gracefully
-
-    print(f"[EXECUTOR] find_files: found {len(matches)} '{extension}' file(s) in {directory}")
-    return json.dumps(matches)
-
-
-def _tool_move_files(args: dict) -> str:
-    """
-    Moves one or more files to a destination directory.
-
-    source_paths can be:
-      - A JSON-encoded list of paths (output of find_files)
-      - A plain single file path string
-    """
-    raw_sources = args.get("source_paths", "")
-    destination = _normalize_path(os.path.expandvars(args.get("destination", "")))
-
-    if not destination:
-        raise ValueError("move_files requires a 'destination' argument.")
-
-    # Parse source_paths — accept both JSON list and plain string
-    if isinstance(raw_sources, list):
-        paths = raw_sources
-    else:
-        try:
-            parsed = json.loads(str(raw_sources))
-            paths = parsed if isinstance(parsed, list) else [str(raw_sources)]
-        except (json.JSONDecodeError, TypeError):
-            paths = [str(raw_sources)]
-
-    if not paths:
-        return "No files to move — source list was empty."
-
-    # Ensure destination directory exists
-    os.makedirs(destination, exist_ok=True)
-
-    moved, failed = [], []
-
-    for src in paths:
-        src = os.path.expandvars(str(src))
-        try:
-            filename = os.path.basename(src)
-            dest_path = os.path.join(destination, filename)
-            shutil.move(src, dest_path)
-            moved.append(filename)
-        except Exception as e:
-            failed.append(f"{os.path.basename(src)} ({e})")
-
-    result = f"Moved {len(moved)} file(s) to {destination}."
-    if failed:
-        result += f" | Failed: {', '.join(failed)}"
-    return result
-
-
-def _tool_list_files(args: dict) -> str:
-    """Lists all files (not subdirectories) in a given directory."""
-    directory = os.path.expandvars(args.get("directory", ""))
-    if not directory:
-        raise ValueError("list_files requires a 'directory' argument.")
-    if not os.path.exists(directory):
-        raise FileNotFoundError(f"Directory not found: {directory}")
-
-    files = [
-        f for f in os.listdir(directory)
-        if os.path.isfile(os.path.join(directory, f))
-    ]
-    return json.dumps(files)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # EXECUTION / SYSTEM TOOL IMPLEMENTATIONS
-# These delegate to the actual tool modules that already exist in the project.
+# run_python is handled here directly (not via the registry) because it
+# needs the python_runner injection described below. Every other tool
+# (create_folder, find_files, move_files, list_files, open_app, type_text,
+# media_control, search_web, chat, delete_file, analyze_screen, ...) is
+# implemented once in tools/entity_tools.py and reached through the
+# registry in _dispatch() — this file used to carry a second, unused copy
+# of each of those (_tool_create_folder, _tool_find_files, _tool_move_files,
+# _tool_list_files, _tool_search_web, _tool_open_app, _tool_type_text,
+# _tool_media_control, _tool_chat) that _dispatch() never actually called;
+# removed as dead code so a future fix doesn't get applied to the wrong copy.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _tool_run_python(args: dict, python_runner=None) -> str:
@@ -153,31 +57,6 @@ def _tool_run_python(args: dict, python_runner=None) -> str:
     # Fallback: use the project's coder module (CLI-style confirmation)
     from coder import execute_python
     return execute_python(code)
-
-
-def _tool_search_web(args: dict) -> str:
-    from tools.web_tools import search
-    return search(args.get("query", ""))
-
-
-def _tool_open_app(args: dict) -> str:
-    from core.router import find_and_open_app
-    return find_and_open_app(args.get("app_name", ""))
-
-
-def _tool_type_text(args: dict) -> str:
-    from tools.system_control import type_text
-    return type_text(args.get("text", ""))
-
-
-def _tool_media_control(args: dict) -> str:
-    from tools.system_control import media_control
-    return media_control(args.get("command", ""))
-
-
-def _tool_chat(args: dict) -> str:
-    """The final reporting step — just returns the response string directly."""
-    return args.get("response", "Task completed.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -224,9 +103,6 @@ def _resolve_args(args, state):
     else:
 
         return args
-    
-def _normalize_path(path: str) -> str:
-    return path.replace("\\", "/")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

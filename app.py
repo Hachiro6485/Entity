@@ -423,20 +423,46 @@ class CyberHUD(ctk.CTk):
             )
 
             # ---------------------------------------------------------
-            # TARGET
+            # TARGET / DETAILS
             # ---------------------------------------------------------
+            # Use a scrollable textbox instead of a label so long AI-generated
+            # code or other destructive-action details remain fully visible.
+            # CTkTextbox provides its own vertical scrollbar and mouse-wheel
+            # scrolling, while keeping the popup at a fixed size.
 
-            target_label = ctk.CTkLabel(
+            target_box = ctk.CTkTextbox(
                 dialog,
-                text=f"Target:\n{details}",
+                width=460,
+                height=115,
                 text_color=TEXT_COLOR,
-                font=FONT_MAIN,
-                wraplength=450
+                font=(FONT_FAMILY, 11),
+                wrap="none",
+                corner_radius=8
             )
 
-            target_label.pack(
+            target_box.pack(
                 pady=(0, 15),
-                padx=20
+                padx=20,
+                fill="x"
+            )
+
+            target_box.insert(
+                "1.0",
+                f"Target:\n{details}"
+            )
+
+            target_box.configure(
+                state="disabled"
+            )
+
+            # Make sure the mouse wheel scrolls the details/code box when the
+            # cursor is over it. This is especially useful for long Python code.
+            target_box.bind(
+                "<MouseWheel>",
+                lambda event: target_box.yview_scroll(
+                    int(-1 * (event.delta / 120)),
+                    "units"
+                )
             )
 
             # ---------------------------------------------------------
@@ -446,8 +472,8 @@ class CyberHUD(ctk.CTk):
             warning_label = ctk.CTkLabel(
                 dialog,
                 text=(
-                    "This action may permanently change or destroy data.\n"
-                    "Type DELETE and enter your Entity PIN to continue."
+                    "This action may permanently change data.\n"
+                    "Type YES and enter your Entity PIN to continue."
                 ),
                 text_color=TERMINAL_BLUE,
                 font=FONT_MAIN,
@@ -464,7 +490,7 @@ class CyberHUD(ctk.CTk):
 
             confirmation_entry = ctk.CTkEntry(
                 dialog,
-                placeholder_text="Type DELETE",
+                placeholder_text="Type YES",
                 width=360,
                 height=40
             )
@@ -560,10 +586,10 @@ class CyberHUD(ctk.CTk):
                 # Check DELETE
                 # -----------------------------------------------------
 
-                if confirmation != "DELETE":
+                if confirmation != "YES":
 
                     status_label.configure(
-                        text="You must type DELETE exactly."
+                        text="You must type YES exactly."
                     )
 
                     confirmation_entry.focus_set()

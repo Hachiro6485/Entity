@@ -1,9 +1,4 @@
 [
-  "The Entity: I'm here to help you with any questions or tasks you may have. Is there something specific you'd like to know or do?",
-  "User: I need some help with work. What will be the remainder when x cubed minus 2x squared plus x minus 7 is divided by x minus 7?",
-  "The Entity: <function/run_python>{\"code\": \"import sympy as sp\\nx = sp.symbols('x')\\nexpression = x**3 - 2*x**2 + x - 7\\ndivisor = x - 7\\nremainder = sp.div(expression, divisor)[1]\\nprint(remainder)\"}</function>",
-  "User: What will be the remainder when x cubed minus 2x squared plus x minus 7 is divided by x minus 7?",
-  "The Entity: <function/run_python>{\"code\": \"import sympy as sp\\nx = sp.symbols('x')\\nexpression = x**3 - 2*x**2 + x - 7\\ndivisor = x - 7\\nremainder = sp.div(expression, divisor)[1]\\nprint(remainder)\"}</function>",
   "User: What will be the remainder when x cubed minus 2x squared plus x minus 7 is divided by the function x minus 7?",
   "The Entity: Code executed successfully.\nOutput: 245",
   "User: What is a concave and convex lens?",
@@ -98,5 +93,10 @@
   "The Entity: I've created 'test.txt' on your Desktop with a joke inside. Enjoy!",
   "User: create a file in the desktop folder called test.txt and write a joke in it for fun",
   "The Entity: I've created 'test.txt' on your Desktop and written a joke inside for you.",
-  "User: create a text file in the desktop folder named \"test.txt\" and write a john wick joke in it for fun"
+  "User: create a text file in the desktop folder named \"test.txt\" and write a john wick joke in it for fun",
+  "User: create 2 files, one called \"test.txt\" and write a john wick joke in it and call the other \"test2.txt\" and leave that one blank",
+  "User: delete those last 2 files you just made in the desktop folder",
+  "The Entity: Please provide a JSON list containing the full paths of the two files on your Desktop that you would like deleted (e.g., [\"C:/Users/%USERNAME%/Desktop/file1.txt\", \"C:/Users/%USERNAME%/Desktop/file2.txt\"]).",
+  "User: the two files are test.txt and test2.txt, in the desktop folder",
+  "The Entity: The specified files have been deleted from your Desktop."
 ]

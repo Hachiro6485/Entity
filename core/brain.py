@@ -104,13 +104,39 @@ Rules:
 4. Do NOT call a tool named "json".
 5. When no tool is needed, respond normally.
 6. Never explain your reasoning.
-7. If the task requires:
-   - file manipulation
-   - web scraping
-   - automation
-   - calculations
-   - system operations
-   then use run_python.
+7.IMPORTANT FILE SYSTEM RULES:
+
+- For file searches, ALWAYS use the dedicated file tools.
+- For counting files, use find_files or list_files.
+- For listing files, use list_files.
+- For finding files by extension, use find_files.
+- For creating folders, use create_folder.
+- For moving files, use move_files.
+- For deleting a specific file, use delete_file.
+- NEVER use run_python for an operation when a dedicated file tool exists.
+- NEVER scan C:/ or the entire system when the user specified a particular folder.
+- If the user says "Desktop", use:
+  C:/Users/%USERNAME%/Desktop
+- If the user says "Downloads", use:
+  C:/Users/%USERNAME%/Downloads
+- If the user says "Documents", use:
+  C:/Users/%USERNAME%/Documents
+
+For example:
+
+User: How many PDFs are on my Desktop?
+
+Use:
+
+{
+  "action": "find_files",
+  "value": {
+    "extension": ".pdf",
+    "directory": "C:/Users/%USERNAME%/Desktop"
+  }
+}
+
+Do NOT generate Python code using os.walk() for this task.
 
 8. If action is run_python:
    - value must contain ONLY executable Python code.
@@ -272,6 +298,103 @@ ENTITY_TOOLS = [
         }
     },
     {
+        "type": "function",
+        "function": {
+            "name": "create_folder",
+            "description": "Creates a directory on the local machine.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The directory path to create."
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_files",
+            "description": (
+                "Recursively finds files matching an extension "
+                "inside a specified directory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension": {
+                        "type": "string",
+                        "description": (
+                            "File extension to search for, "
+                            "such as .pdf or .txt."
+                        )
+                    },
+                    "directory": {
+                        "type": "string",
+                        "description": (
+                            "The directory to search inside."
+                        )
+                    }
+                },
+                "required": [
+                    "extension",
+                    "directory"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_files",
+            "description": "Moves one or more files into a destination directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_paths": {
+                        "type": "string",
+                        "description": (
+                            "A single file path or a JSON list "
+                            "of file paths."
+                        )
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": (
+                            "Destination directory."
+                        )
+                    }
+                },
+                "required": [
+                    "source_paths",
+                    "destination"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "Lists files in a specified directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "directory": {
+                        "type": "string",
+                        "description": (
+                            "Directory whose files should be listed."
+                        )
+                    }
+                },
+                "required": ["directory"]
+            }
+        }
+    },
+    {
         "type": "function", 
         "function": {
             "name": "run_python", 
@@ -359,12 +482,19 @@ def think(user_input, memory_context=""):
                         "type_text": "type_text",
                         "media_control": "media_control",
                         "delete_file": "delete_file",
+                        "create_folder": "create_folder",
+                        "find_files": "find_files",
+                        "move_files": "move_files",
+                        "list_files": "list_files",
                         "run_python": "run_python"
                     }
 
                     action = action_map.get(func, func)
 
-                    final_value = list(args.values())[0]
+                    if len(args) == 1:
+                        final_value = list(args.values())[0]
+                    else:
+                        final_value = args
 
                     result = {
                         "action": action,

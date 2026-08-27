@@ -330,29 +330,142 @@ def needs_planning(command: str) -> bool:
 
 def ai_needs_planning(command):
     """
-    Uses a direct LLM call to decide whether a request requires multi-step
-    planning.
+    Determines whether a request genuinely requires the multi-step planner.
 
-    This used to call brain.think(prompt), which drags in Entity's full
-    tool-calling system prompt and tool definitions for what's really just
-    a YES/NO classification — that's what caused the "attempted to call
-    tool 'json' which was not in request.tools" 400 errors: the model got
-    confused between "answer YES/NO" and "call a tool." classify_task()
-    just above already does this the right way (direct completion, no
-    tools attached); this follows the same pattern instead of going
-    through brain.
+    Fast deterministic rules handle obvious simple requests first.
+    This prevents the planner from being invoked for things like:
+        - counting files
+        - listing files
+        - checking a folder
+        - simple calculations
+        - opening an application
+        - answering a factual question
+
+    The LLM classifier is only used when the request is genuinely ambiguous.
     """
 
+    command_lower = command.lower().strip()
+
+    # ============================================================
+    # OBVIOUS SINGLE-STEP REQUESTS
+    # ============================================================
+
+    simple_file_questions = [
+        "how many files",
+        "how many pdf",
+        "how many pdfs",
+        "how many images",
+        "how many pictures",
+        "how many documents",
+        "how many videos",
+        "how many folders",
+        "how many txt",
+        "how many text files",
+        "how many files are",
+        "count the files",
+        "count files",
+        "count the pdf",
+        "count the pdfs",
+        "list the files",
+        "list files",
+        "what files are",
+        "which files are",
+    ]
+
+    if any(phrase in command_lower for phrase in simple_file_questions):
+        print(
+            "DEBUG PLANNER AI DECISION: NO "
+            "(simple file-information request)"
+        )
+        return False
+
+    # ============================================================
+    # OBVIOUS SINGLE-STEP SYSTEM REQUESTS
+    # ============================================================
+
+    simple_commands = [
+        "open ",
+        "launch ",
+        "start ",
+        "close ",
+        "play ",
+        "pause ",
+        "mute",
+        "unmute",
+        "volume up",
+        "volume down",
+        "turn the volume up",
+        "turn the volume down",
+    ]
+
+    if any(command_lower.startswith(prefix) for prefix in simple_commands):
+        print(
+            "DEBUG PLANNER AI DECISION: NO "
+            "(simple system request)"
+        )
+        return False
+
+    # ============================================================
+    # OBVIOUS MULTI-STEP REQUESTS
+    # ============================================================
+
+    if needs_planning(command):
+        print(
+            "DEBUG PLANNER AI DECISION: YES "
+            "(planning trigger)"
+        )
+        return True
+
+    # ============================================================
+    # LLM CLASSIFIER FOR EVERYTHING ELSE
+    # ============================================================
+
     prompt = f"""
-Determine whether the following user request requires:
+Determine whether this user request genuinely requires a multi-step plan.
 
-- multiple steps
-- asking follow-up questions
-- gathering missing information
-- making decisions with the user
-- executing a plan
+A request should be classified as NO if Entity can complete it with one
+direct tool call, one calculation, one simple lookup, or one simple action.
 
-Respond ONLY with:
+A request should be classified as YES only if it requires multiple actions,
+missing information, several dependent operations, organization, comparison,
+or a sequence of actions.
+
+Examples:
+
+"How many PDFs are on my Desktop?"
+NO
+
+"How many files are in my Downloads folder?"
+NO
+
+"List the files on my Desktop."
+NO
+
+"Open Chrome."
+NO
+
+"What is 25 times 25?"
+NO
+
+"Create a folder called Test."
+NO
+
+"Delete test.txt."
+NO
+
+"Find all PDFs on my Desktop and move them into a folder called PDFs."
+YES
+
+"Create a folder, put all my PDFs inside it, and then open it."
+YES
+
+"Delete these three files."
+YES
+
+"Find my photos and organize them into folders by year."
+YES
+
+Respond with exactly one word:
 
 YES
 
@@ -360,40 +473,92 @@ or
 
 NO
 
-Request:
+User request:
 {command}
 """
 
     messages = [
-        {"role": "system", "content": "You are a classifier. Respond with exactly one word: YES or NO. Nothing else."},
-        {"role": "user", "content": prompt}
+        {
+            "role": "system",
+            "content": (
+                "You are a strict planning classifier. "
+                "Respond with exactly YES or NO. "
+                "Never call a tool. "
+                "Never output JSON."
+            )
+        },
+        {
+            "role": "user",
+            "content": prompt
+        }
     ]
 
     for provider in PROVIDERS:
 
-        if time.time() < COOLDOWN_REGISTRY.get(provider["name"], 0):
+        if time.time() < COOLDOWN_REGISTRY.get(
+            provider["name"], 0
+        ):
             continue
 
         try:
-            client = OpenAI(base_url=provider["base_url"], api_key=provider["api_key"])
+
+            client = OpenAI(
+                base_url=provider["base_url"],
+                api_key=provider["api_key"]
+            )
+
             response = client.chat.completions.create(
                 model=provider["model"],
                 messages=messages,
-                temperature=0
+                temperature=0,
+                max_tokens=3
             )
-            answer = (response.choices[0].message.content or "").strip().upper()
 
+            answer = (
+                response.choices[0]
+                .message.content or ""
+            ).strip().upper()
+
+            # Only accept an EXACT classifier answer.
+            if answer == "YES":
+                print(
+                    "DEBUG PLANNER AI DECISION: YES"
+                )
+                return True
+
+            if answer == "NO":
+                print(
+                    "DEBUG PLANNER AI DECISION: NO"
+                )
+                return False
+
+            # Anything else is not trustworthy.
             print(
-                f"DEBUG PLANNER AI DECISION: {answer}"
+                f"DEBUG PLANNER AI DECISION: "
+                f"Invalid classifier response: {answer!r}"
             )
-
-            return "YES" in answer
 
         except Exception as e:
-            COOLDOWN_REGISTRY[provider["name"]] = time.time() + COOLDOWN_DURATION_SECONDS
+
+            COOLDOWN_REGISTRY[
+                provider["name"]
+            ] = (
+                time.time()
+                + COOLDOWN_DURATION_SECONDS
+            )
+
+            print(
+                f"[CLASSIFIER] "
+                f"{provider['name']} failed: {e}"
+            )
+
             continue
 
-    print("DEBUG PLANNER AI DECISION: ALL AI NODES BUSY.")
+    print(
+        "DEBUG PLANNER AI DECISION: "
+        "ALL AI NODES BUSY — defaulting to NO."
+    )
+
     return False
 
 

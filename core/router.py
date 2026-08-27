@@ -12,6 +12,13 @@ from tools.basic_tools import (
     delete_file
     )
 
+from tools.entity_tools import (
+    tool_create_folder,
+    tool_find_files,
+    tool_move_files,
+    tool_list_files
+)
+
 def find_and_open_app(app_name):
     """
     Compatibility wrapper.
@@ -49,6 +56,29 @@ def route(intent):
 
     elif action == "delete_file":
         return delete_file(value)
+
+    elif action == "create_folder":
+        return tool_create_folder({
+            "path": value
+        })
+
+    elif action == "find_files":
+        if isinstance(value, dict):
+            return tool_find_files(value)
+
+        return "Error: find_files requires extension and directory."
+
+    elif action == "move_files":
+        if isinstance(value, dict):
+            return tool_move_files(value)
+
+        return "Error: move_files requires source_paths and destination."
+
+    elif action == "list_files":
+        if isinstance(value, dict):
+            return tool_list_files(value)
+
+        return "Error: list_files requires a directory."
 
     elif action == "search_web" or action == "search":
         return web_tools.search(value)

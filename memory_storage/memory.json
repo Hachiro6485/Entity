@@ -1,5 +1,4 @@
 [
-  "The Entity: What is the name of the project you are currently working on?",
   "User: turn my volume up to maximum",
   "User: turn my volume up to 30",
   "User: Type \"STAGE 2 IS WORKING\" into the current window.",
@@ -98,5 +97,6 @@
   "User: how many pdfs do i have in my downloads folder",
   "The Entity: You have 0\n PDF files in your Downloads folder.",
   "User: how many pdfs do i have on my entire system, disregarding galaxt's A35",
-  "User: delete test.txt from path C:\\Users\\marcu_0q6f2c2\\Desktop\\entityv5\\Entity"
+  "User: delete test.txt from path C:\\Users\\marcu_0q6f2c2\\Desktop\\entityv5\\Entity",
+  "User: How many PDFs are on my Desktop?"
 ]

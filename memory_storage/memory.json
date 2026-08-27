@@ -1,9 +1,4 @@
 [
-  "User: turn my volume up to maximum",
-  "User: turn my volume up to 30",
-  "User: Type \"STAGE 2 IS WORKING\" into the current window.",
-  "User: open youtube",
-  "User: search youtube for warframe builds",
   "User: open calculator",
   "User: open calc",
   "User: open browser",
@@ -98,5 +93,10 @@
   "The Entity: You have 0\n PDF files in your Downloads folder.",
   "User: how many pdfs do i have on my entire system, disregarding galaxt's A35",
   "User: delete test.txt from path C:\\Users\\marcu_0q6f2c2\\Desktop\\entityv5\\Entity",
-  "User: How many PDFs are on my Desktop?"
+  "User: How many PDFs are on my Desktop?",
+  "User: use run_python tool to tell me how many pdf documents i have on my desktop",
+  "User: how many PDF files are in my Desktop folder?",
+  "User: Delete text file \"test.txt\" from the Desktop folder",
+  "User: Delete files test2.txt and silly_file.txt from Desktop folder",
+  "User: delete silly_file.txt from the desktop folder"
 ]

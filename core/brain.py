@@ -45,6 +45,103 @@ Analyze Marcus's requests carefully:
 
 When writing scripts that require fetching data from the web (like weather or search), you must use the built-in urllib and json libraries. Do NOT use the requests library, as it may not be available in the execution environment.
 
+
+════════════════════════════════════════════════════════════
+RUN_PYTHON COMMON-SENSE RULES
+════════════════════════════════════════════════════════════
+
+run_python is your general-purpose execution tool. Use it when a
+dedicated specialized tool is not necessary.
+
+When using run_python, behave like a careful human assistant rather
+than blindly writing the broadest possible script.
+
+1. ALWAYS operate on the SMALLEST reasonable scope that satisfies the
+   user's request.
+
+2. NEVER scan the entire C:/ drive when the user names a specific
+   folder, such as Desktop, Downloads, Documents, Pictures, or Videos.
+
+3. If the user says:
+      "my Desktop"
+   use:
+      os.path.expanduser("~/Desktop")
+   or:
+      os.path.expandvars("C:/Users/%USERNAME%/Desktop")
+
+4. If the user says:
+      "my Downloads"
+   use:
+      os.path.expanduser("~/Downloads")
+
+5. If the user says:
+      "my Documents"
+   use:
+      os.path.expanduser("~/Documents")
+
+6. If the user asks a QUESTION about files, produce the requested
+   INFORMATION rather than dumping unnecessary file paths.
+
+   Example:
+      User: "How many PDFs are on my Desktop?"
+
+   Correct approach:
+      - Search ONLY the Desktop.
+      - Count matching .pdf files.
+      - Print ONLY the number.
+
+   Example code:
+      import os
+      root = os.path.expanduser("~/Desktop")
+      count = sum(
+          1
+          for _, _, files in os.walk(root)
+          for f in files
+          if f.lower().endswith(".pdf")
+      )
+      print(count)
+
+   DO NOT print every matching path unless the user explicitly asks
+   for the paths.
+
+7. If the user asks "how many", "how much", "count", or otherwise asks
+   for a quantity, return the quantity, not the underlying dataset.
+
+8. If the user asks "is there", "are there", or another yes/no question,
+   stop as soon as the answer is known when practical.
+
+9. Do not perform an expensive recursive search when a smaller direct
+   lookup will answer the question.
+
+10. Do not search unrelated directories merely because they are easy
+    to access.
+
+11. NEVER use the current project directory as a substitute for the
+    user's requested location.
+
+12. NEVER assume C:/ is the intended search location unless the user
+    explicitly asks to search the entire C: drive.
+
+13. If the user specifies a location, that location takes priority over
+    the current working directory.
+
+14. If the user asks for a result that can be computed from a local
+    search, print a concise machine-readable result and let Entity
+    explain it naturally afterward.
+
+15. Before executing Python that searches the filesystem, mentally
+    answer:
+       "What exact folder did the user ask me to operate on?"
+    Then use that folder.
+
+16. When the task is simple, keep the Python script simple.
+    Do not build a complicated script when a short one will do.
+
+17. Never enumerate or expose internal filesystem paths unless they
+    are necessary for the user's request.
+
+════════════════════════════════════════════════════════════
+
 CRITICAL RULES FOR PYTHON CODE:
 1. You have FULL system access. 
 2. If you need to search the web, use standard libraries (urllib, requests) or webbrowser.
@@ -69,7 +166,26 @@ Output code only.
 8. When generating file paths on Windows:
 
 NEVER assume the username.
-Always use: os.path.expandvars("C:/Users/%USERNAME%/...") or os.path.expanduser("~") to locate the current user.
+
+Use:
+    os.path.expanduser("~")
+or:
+    os.path.expandvars("C:/Users/%USERNAME%/...")
+
+When the user names a standard personal folder, use the corresponding
+folder directly.
+
+Examples:
+
+Desktop    -> os.path.expanduser("~/Desktop")
+Downloads  -> os.path.expanduser("~/Downloads")
+Documents  -> os.path.expanduser("~/Documents")
+Pictures   -> os.path.expanduser("~/Pictures")
+Videos     -> os.path.expanduser("~/Videos")
+
+Do NOT replace a user-specified folder with C:/.
+
+
 
 AVAILABLE TOOLS
 
@@ -105,38 +221,27 @@ Rules:
 5. When no tool is needed, respond normally.
 6. Never explain your reasoning.
 7.IMPORTANT FILE SYSTEM RULES:
-
-- For file searches, ALWAYS use the dedicated file tools.
-- For counting files, use find_files or list_files.
-- For listing files, use list_files.
-- For finding files by extension, use find_files.
-- For creating folders, use create_folder.
-- For moving files, use move_files.
-- For deleting a specific file, use delete_file.
-- NEVER use run_python for an operation when a dedicated file tool exists.
-- NEVER scan C:/ or the entire system when the user specified a particular folder.
+If the task requires:
+   - automation
+   - calculations
+   - data processing
+   - general-purpose computer scripting
+   - filesystem work for which no specialized tool is required
+   - web/data retrieval for which no specialized tool is required
+   then use run_python.
+------------
+   IMPORTANT:
+   Choosing run_python does NOT mean choosing the broadest possible
+   operation. The Python code must still follow the RUN_PYTHON
+   COMMON-SENSE RULES above and operate only on the scope requested
+   by the user.
+   ----------
 - If the user says "Desktop", use:
   C:/Users/%USERNAME%/Desktop
 - If the user says "Downloads", use:
   C:/Users/%USERNAME%/Downloads
 - If the user says "Documents", use:
   C:/Users/%USERNAME%/Documents
-
-For example:
-
-User: How many PDFs are on my Desktop?
-
-Use:
-
-{
-  "action": "find_files",
-  "value": {
-    "extension": ".pdf",
-    "directory": "C:/Users/%USERNAME%/Desktop"
-  }
-}
-
-Do NOT generate Python code using os.walk() for this task.
 
 8. If action is run_python:
    - value must contain ONLY executable Python code.
@@ -298,103 +403,6 @@ ENTITY_TOOLS = [
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "create_folder",
-            "description": "Creates a directory on the local machine.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The directory path to create."
-                    }
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "find_files",
-            "description": (
-                "Recursively finds files matching an extension "
-                "inside a specified directory."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "extension": {
-                        "type": "string",
-                        "description": (
-                            "File extension to search for, "
-                            "such as .pdf or .txt."
-                        )
-                    },
-                    "directory": {
-                        "type": "string",
-                        "description": (
-                            "The directory to search inside."
-                        )
-                    }
-                },
-                "required": [
-                    "extension",
-                    "directory"
-                ]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "move_files",
-            "description": "Moves one or more files into a destination directory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "source_paths": {
-                        "type": "string",
-                        "description": (
-                            "A single file path or a JSON list "
-                            "of file paths."
-                        )
-                    },
-                    "destination": {
-                        "type": "string",
-                        "description": (
-                            "Destination directory."
-                        )
-                    }
-                },
-                "required": [
-                    "source_paths",
-                    "destination"
-                ]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_files",
-            "description": "Lists files in a specified directory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": (
-                            "Directory whose files should be listed."
-                        )
-                    }
-                },
-                "required": ["directory"]
-            }
-        }
-    },
-    {
         "type": "function", 
         "function": {
             "name": "run_python", 
@@ -482,10 +490,6 @@ def think(user_input, memory_context=""):
                         "type_text": "type_text",
                         "media_control": "media_control",
                         "delete_file": "delete_file",
-                        "create_folder": "create_folder",
-                        "find_files": "find_files",
-                        "move_files": "move_files",
-                        "list_files": "list_files",
                         "run_python": "run_python"
                     }
 

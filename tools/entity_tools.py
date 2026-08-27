@@ -84,133 +84,13 @@ def tool_delete_file(args):
 
     return delete_file(path)
 
-@entity_tool(
-    name="create_folder",
-    description="Creates a directory on the local machine.",
-    category="filesystem"
-)
-def tool_create_folder(args):
-
-    path = os.path.expandvars(args.get("path", ""))
-
-    if not path:
-        raise ValueError("create_folder requires a path.")
-
-    os.makedirs(path, exist_ok=True)
-
-    return f"Folder created: {path}"
-
-
-@entity_tool(
-    name="find_files",
-    description="Recursively finds files matching an extension.",
-    category="filesystem"
-)
-def tool_find_files(args):
-
-    extension = args.get("extension", "")
-    directory = os.path.expandvars(args.get("directory", ""))
-
-    if not extension:
-        raise ValueError("find_files requires extension.")
-
-    if not directory:
-        raise ValueError("find_files requires directory.")
-
-    if not extension.startswith("."):
-        extension = "." + extension
-
-    matches = []
-
-    for root, _, files in os.walk(directory):
-        for file in files:
-
-            if file.lower().endswith(extension.lower()):
-                matches.append(
-                    os.path.join(root, file)
-                )
-
-    return json.dumps(matches)
-
-
-@entity_tool(
-    name="move_files",
-    description="Moves files into another directory.",
-    category="filesystem"
-)
-def tool_move_files(args):
-
-    raw_sources = args.get("source_paths", "")
-    destination = os.path.expandvars(
-        args.get("destination", "")
-    )
-
-    if not destination:
-        raise ValueError("move_files requires destination.")
-
-    os.makedirs(destination, exist_ok=True)
-
-    try:
-        parsed = json.loads(str(raw_sources))
-
-        if isinstance(parsed, list):
-            paths = parsed
-        else:
-            paths = [str(raw_sources)]
-
-    except Exception:
-        paths = [str(raw_sources)]
-
-    moved = []
-
-    for src in paths:
-
-        if not src:
-            continue
-
-        filename = os.path.basename(src)
-
-        shutil.move(
-            src,
-            os.path.join(destination, filename)
-        )
-
-        moved.append(filename)
-
-    return (
-        f"Moved {len(moved)} file(s) "
-        f"to {destination}"
-    )
-
-
-@entity_tool(
-    name="list_files",
-    description="Lists files in a directory.",
-    category="filesystem"
-)
-def tool_list_files(args):
-
-    directory = os.path.expandvars(
-        args.get("directory", "")
-    )
-
-    files = [
-        f for f in os.listdir(directory)
-        if os.path.isfile(
-            os.path.join(directory, f)
-        )
-    ]
-
-    return json.dumps(files)
-
-
 # =============================================================================
 # AUTONOMOUS TOOLS
 # =============================================================================
 
 @entity_tool(
     name="run_python",
-    description="Executes Python code when no dedicated tool exists.",
+    description="Executes Python for general-purpose autonomous tasks such as automation, calculation, data processing, filesystem operations, or data retrieval. Use this as the general-purpose execution tool when a specialized tool is unnecessary. Always operate on the smallest scope requested by the user. If the user names a specific folder, search only that folder. For counting or yes/no questions, return only the requested result rather than dumping unnecessary paths or data",
     category="autonomous"
 )
 def tool_run_python(args):

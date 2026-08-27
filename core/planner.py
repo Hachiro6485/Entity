@@ -154,32 +154,12 @@ AVAILABLE TOOLS (use EXACTLY these names)
 ═══════════════════════════════════════════════════════
 
 FILE SYSTEM TOOLS:
-  create_folder(path: str)
-    — Creates a new directory. Expands %USERNAME% and other env vars.
-    — Example: {"path": "C:/Users/%USERNAME%/Desktop/PDFs"}
-
-  find_files(extension: str, directory: str)
-    — Recursively finds all files with the given extension in a directory.
-    — extension must include the dot, e.g. ".pdf", ".jpg", ".txt"
-    — Returns a JSON list of full file paths.
-    — Example: {"extension": ".pdf", "directory": "C:/Users/%USERNAME%/Desktop"}
-
-  move_files(source_paths: str, destination: str)
-    — Moves a file or list of files to the destination directory.
-    — source_paths accepts either a single path string OR a JSON list of paths.
-    — Example: {"source_paths": "$step_2.output", "destination": "C:/Users/%USERNAME%/Desktop/PDFs"}
-
   delete_file(path: str)
     — Permanently deletes exactly one specific file.
     — Requires explicit human confirmation and the Entity PIN.
     — Never use run_python for file deletion.
     — Only use when the user explicitly requests deletion.
     — Example: {"path": "C:/Users/%USERNAME%/Desktop/test.txt"}
-
-  list_files(directory: str)
-    — Lists all files in a given directory.
-    — Returns a JSON list of file names.
-    — Example: {"directory": "C:/Users/%USERNAME%/Documents"}
 
 EXECUTION TOOLS:
   run_python(code: str)
@@ -265,30 +245,6 @@ GOAL: "Create a folder called Projects on my Desktop"
         "step_id": "step_2",
         "tool": "chat",
         "args": {"response": "I've created the Projects folder on your Desktop."}
-    }
-]
-
-GOAL: "Find all PDFs on my Desktop and move them into a folder called Documents"
-[
-    {
-        "step_id": "step_1",
-        "tool": "create_folder",
-        "args": {"path": "C:/Users/%USERNAME%/Desktop/Documents"}
-    },
-    {
-        "step_id": "step_2",
-        "tool": "find_files",
-        "args": {"extension": ".pdf", "directory": "C:/Users/%USERNAME%/Desktop"}
-    },
-    {
-        "step_id": "step_3",
-        "tool": "move_files",
-        "args": {"source_paths": "$step_2.output", "destination": "C:/Users/%USERNAME%/Desktop/Documents"}
-    },
-    {
-        "step_id": "step_4",
-        "tool": "chat",
-        "args": {"response": "Done. All PDF files from your Desktop have been moved into the Documents folder."}
     }
 ]
 

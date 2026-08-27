@@ -1,12 +1,4 @@
 [
-  "User: open calculator",
-  "User: open calc",
-  "User: open browser",
-  "User: open google chrome",
-  "User: open spotify",
-  "User: open super mega calculator 9000",
-  "User: open youtube",
-  "User: open spotify",
   "User: open legion arena",
   "User: Yes.",
   "User: \u7a46\u54c1\u4ecb\u5bf9\u7740",
@@ -98,5 +90,13 @@
   "User: how many PDF files are in my Desktop folder?",
   "User: Delete text file \"test.txt\" from the Desktop folder",
   "User: Delete files test2.txt and silly_file.txt from Desktop folder",
-  "User: delete silly_file.txt from the desktop folder"
+  "User: delete silly_file.txt from the desktop folder",
+  "User: create a text file  in the desktop folder and call it \"magic.txt\", and leave a present in it for me (its a secret ;) )",
+  "User: delete the file you just created",
+  "User: does Sambanova AI and Cerebras AI have any models that are free at this point in time?",
+  "User: do you know what you are?",
+  "User: okay, i need two more AI providers for you (as backups), what do you think would be the best options, given the things you need to be able to do? (must be free, i cannot put any money into you right now)",
+  "User: i already use gemini flash for your vision capabilities so that one is out the window and i do not have a crazy beefy laptop so i am rather constrained to cloud models so i cant use things like llama or mistral, do you have any other suggestions keeping this in mind?",
+  "User: how good is mistral AI (cloud) for your needs and tools like chatting, running python code, using tools etc?",
+  "User: what about deepseek"
 ]

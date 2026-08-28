@@ -58,8 +58,8 @@ def _provider(name, base_url, env_var, default_model, model_env_var=None):
 _ALL_PROVIDERS = [
     _provider("Groq Cloud", "https://api.groq.com/openai/v1", "GROQ_API_KEY", "openai/gpt-oss-120b", "GROQ_MODEL"),
     _provider("OpenRouter Free", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "openrouter/free", "OPENROUTER_MODEL"),
-    _provider("Cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", "llama-3.3-70b", "CEREBRAS_MODEL"),
-    _provider("SambaNova AI", "https://api.sambanova.ai/v1", "SAMBANOVA_API_KEY", "Meta-Llama-3.3-70B-Instruct", "SAMBANOVA_MODEL"),
+    _provider("DeepSeek", "https://api.deepseek.com", "DEEPSEEK_API_KEY", "deepseek-v4-flash", "DEEPSEEK_MODEL"),
+    _provider("Mistral AI", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", "mistral-small-latest", "MISTRAL_MODEL"),
 ]
 
 # Only providers that actually have a key configured are usable.
@@ -79,6 +79,6 @@ def require_providers():
     if not PROVIDERS:
         raise RuntimeError(
             "No LLM providers configured. Copy .env.example to .env and set "
-            "at least one of GROQ_API_KEY, SAMBANOVA_API_KEY, CEREBRAS_API_KEY, "
+            "at least one of GROQ_API_KEY, DEEPSEEK_API_KEY, MISTRAL_API_KEY, "
             "or OPENROUTER_API_KEY."
         )

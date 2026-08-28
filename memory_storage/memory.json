@@ -1,9 +1,4 @@
 [
-  "User: open legion arena",
-  "User: Yes.",
-  "User: \u7a46\u54c1\u4ecb\u5bf9\u7740",
-  "User: coupon calculator",
-  "User: Upon Calculator",
   "The Entity: Please provide the original total price and the coupon discount as a percentage (e.g., \"120, 15\" for $120 with a 15% off coupon).",
   "User: Open YouTube",
   "User: waters 25 times 25",
@@ -98,5 +93,10 @@
   "User: okay, i need two more AI providers for you (as backups), what do you think would be the best options, given the things you need to be able to do? (must be free, i cannot put any money into you right now)",
   "User: i already use gemini flash for your vision capabilities so that one is out the window and i do not have a crazy beefy laptop so i am rather constrained to cloud models so i cant use things like llama or mistral, do you have any other suggestions keeping this in mind?",
   "User: how good is mistral AI (cloud) for your needs and tools like chatting, running python code, using tools etc?",
-  "User: what about deepseek"
+  "User: what about deepseek",
+  "User: create a blank python file in the Entity folder in entityv6 in the Desktop folder",
+  "User: Delete folders entityv1, Entityv2 and entityv3 and their contents all from the Desktop folder",
+  "The Entity: The specified folders (entityv1, Entityv2, and entityv3) have been removed from your Desktop.",
+  "User: if i ask you to delete multiple things spread throughout my system that revolve around a topic, but i dont know where everything is, can you do research on the topic to check against my system and see what files associate with the topic i gave you? just a question, do not do anything",
+  "User: i keep hearing people and my friends talk about this thing called larping, what is it?"
 ]

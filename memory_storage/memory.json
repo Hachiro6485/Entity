@@ -1,15 +1,4 @@
 [
-  "The Entity: Please provide the original total price and the coupon discount as a percentage (e.g., \"120, 15\" for $120 with a 15% off coupon).",
-  "User: Open YouTube",
-  "User: waters 25 times 25",
-  "User: what is the weather in Coover today",
-  "User: what is the time",
-  "User: what is 25 squared",
-  "User: shutdown",
-  "The Entity: Shutting down your computer now.",
-  "User: how are you",
-  "User: nothing really, do you have plans?",
-  "User: Hello",
   "User: Nothing really. How are you?",
   "User: open browser, search youtube for \"quantum physics\" and play the first video",
   "The Entity: I've opened the YouTube search for \"quantum physics\" and started playing the first video for you.",
@@ -98,5 +87,16 @@
   "User: Delete folders entityv1, Entityv2 and entityv3 and their contents all from the Desktop folder",
   "The Entity: The specified folders (entityv1, Entityv2, and entityv3) have been removed from your Desktop.",
   "User: if i ask you to delete multiple things spread throughout my system that revolve around a topic, but i dont know where everything is, can you do research on the topic to check against my system and see what files associate with the topic i gave you? just a question, do not do anything",
-  "User: i keep hearing people and my friends talk about this thing called larping, what is it?"
+  "User: i keep hearing people and my friends talk about this thing called larping, what is it?",
+  "User: what are some cool affordable beginner cars",
+  "User: what about an old BMW E36 M3",
+  "User: do you think it will be a good beginner car",
+  "User: does it come with manual",
+  "User: do you have any older car recommendations for first time drivers",
+  "User: a Hot Wheels made in Malaysia",
+  "User: i have an aston martin 1983 db5 is were those made in malaysia",
+  "User: I made a mistake. It is the Aston Martin 1963 DB5 with those made in Malaysia",
+  "User: I meant the Hot Wheels 1963 Aston Martin DB5. Were those made in Malibu",
+  "User: An , system done",
+  "User: who is the band CORTIS"
 ]

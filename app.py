@@ -27,6 +27,7 @@ from core import router
 from core import planner
 from core import executor
 from core import verifier
+from core.humanizer import humanize_for_speech
 import tools.entity_tools
 from tools.tool_registry import print_registry
 from memory.memory import get_context, add_memory
@@ -1177,11 +1178,17 @@ class CyberHUD(ctk.CTk):
 
     def vocalize_response(self, text):
         if not text.strip(): return
-        clean_speech_text = re.sub(r'[*_~#`]', '', text)
         self.is_speaking = True
 
         def async_speak():
             self.ui_queue.put({"type": "state", "text": "● DAEMON: TRANSMITTING...", "color": ACTIVE_ORANGE})
+            # Rewritten for natural spoken delivery here, inside the already-
+            # spawned background thread — not before it, so the LLM
+            # round-trip never risks blocking the Tkinter main thread
+            # regardless of which thread called vocalize_response().
+            # Supersedes the old symbol-stripping regex (core/humanizer.py's
+            # fallback path covers that same ground if every provider is down).
+            clean_speech_text = humanize_for_speech(text)
             temp_file = os.path.join(tempfile.gettempdir(), f"entity_{uuid.uuid4()}.mp3")
             try:
                 communicate = edge_tts.Communicate(clean_speech_text, voice=self.voice_model)

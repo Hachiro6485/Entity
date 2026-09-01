@@ -59,7 +59,7 @@ _ALL_PROVIDERS = [
     _provider("Groq Cloud", "https://api.groq.com/openai/v1", "GROQ_API_KEY", "openai/gpt-oss-120b", "GROQ_MODEL"),
     _provider("OpenRouter Free", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "openrouter/free", "OPENROUTER_MODEL"),
     _provider("Mistral AI", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", "mistral-small-latest", "MISTRAL_MODEL"),
-    _provider("DeepSeek", "https://api.deepseek.com", "DEEPSEEK_APEY", "deepseek-v4-flash", "DEEPSEEK_MODEL"),
+    _provider("DeepSeek", "https://api.deepseek.com", "DEEPSEEK_API_KEY", "deepseek-v4-flash", "DEEPSEEK_MODEL"),
 ]
 
 # Only providers that actually have a key configured are usable.

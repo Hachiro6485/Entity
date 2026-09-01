@@ -2,6 +2,8 @@ import pyttsx3
 import queue
 import threading
 
+from core.humanizer import humanize_for_speech
+
 # Initialize the engine
 engine = pyttsx3.init()
 
@@ -20,9 +22,16 @@ def worker():
         text = speech_queue.get()
         if text is None:
             break
-        
+
+        # Rewritten for natural spoken delivery here (in the worker thread,
+        # not in speak() itself) so the LLM round-trip never blocks
+        # whatever thread called speak() — see core/humanizer.py.
+        spoken_text = humanize_for_speech(text)
+        if spoken_text != text:
+            print("[HUMANIZER]:", spoken_text)
+
         # Check if the engine is already busy
-        engine.say(text)
+        engine.say(spoken_text)
         engine.runAndWait()
         speech_queue.task_done()
 

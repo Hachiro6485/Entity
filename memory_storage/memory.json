@@ -1,9 +1,4 @@
 [
-  "User: Nothing really. How are you?",
-  "User: open browser, search youtube for \"quantum physics\" and play the first video",
-  "The Entity: I've opened the YouTube search for \"quantum physics\" and started playing the first video for you.",
-  "User: make a TXT file in the Desktop folder and write a little joke inside of it, just for fun",
-  "The Entity: All set! I've created a file called 'joke.txt' on your Desktop with a little joke inside.",
   "User: delete test.txt in desktop folder",
   "The Entity: Please confirm you want to delete the file test.txt located on your Desktop and provide the Entity PIN if required.",
   "User: 1234",
@@ -98,5 +93,10 @@
   "User: I made a mistake. It is the Aston Martin 1963 DB5 with those made in Malaysia",
   "User: I meant the Hot Wheels 1963 Aston Martin DB5. Were those made in Malibu",
   "User: An , system done",
-  "User: who is the band CORTIS"
+  "User: who is the band CORTIS",
+  "User: hey, what are some cool looking, unique but still affordable cars for first time owners, no stuff like corollas because they look UGLY",
+  "User: what about some trucks for first-time owners",
+  "User: do you think the Mazda CX-5 is a good first time car",
+  "User: i have a check engine light on my 2008 Nissan Bluebird Sylphy, can you help me run a diagnostic?",
+  "User: how expensive is the obd-ll scanner? also, do you need it or can you go without it?"
 ]
